@@ -1,143 +1,48 @@
 {
-  description = "QMD - Quick Markdown Search";
+  description = "QMD-Rust - Secure on-device search engine for markdown notes (Rust port)";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
     flake-utils.url = "github:numtide/flake-utils";
+    rust-overlay.url = "github:oxalica/rust-overlay";
+    rust-overlay.inputs.nixpkgs.follows = "nixpkgs";
   };
 
-  outputs = { self, nixpkgs, flake-utils }:
-    {
-      homeModules.default = { config, lib, pkgs, ... }:
-        with lib;
-        let
-          cfg = config.programs.qmd;
-        in
-        {
-          options.programs.qmd = {
-            enable = mkEnableOption "QMD - on-device search engine for markdown notes";
-
-            package = mkOption {
-              type = types.package;
-              default = self.packages.${pkgs.stdenv.hostPlatform.system}.default;
-              defaultText = literalExpression "inputs.qmd.packages.\${pkgs.stdenv.hostPlatform.system}.default";
-              description = "The qmd package to use.";
-            };
-          };
-
-          config = mkIf cfg.enable {
-            home.packages = [ cfg.package ];
-          };
-        };
-    } //
+  outputs = { self, nixpkgs, flake-utils, rust-overlay }:
     flake-utils.lib.eachDefaultSystem (system:
       let
-        pkgs = nixpkgs.legacyPackages.${system};
-        packageJson = builtins.fromJSON (builtins.readFile ./package.json);
-        version = packageJson.version;
-
-        # SQLite with loadable extension support for sqlite-vec
-        sqliteWithExtensions = pkgs.sqlite.overrideAttrs (old: {
-          configureFlags = (old.configureFlags or []) ++ [
-            "--enable-load-extension"
-          ];
-        });
-
-        nodeModulesHashes = {
-          x86_64-linux = "sha256-sVXoNWIcx1RYRtRWB4F2j7x8/cabFBKq+plFhPU7tBc=";
-          aarch64-darwin = "sha256-gDyJ5boyH44SeXlKo+W4G36GSUejyXP5PFvW+dFS1Mk=";
-
-          # Populate these on first build for additional hosts if/when needed.
-          aarch64-linux = pkgs.lib.fakeHash;
-          x86_64-darwin = pkgs.lib.fakeHash;
+        pkgs = import nixpkgs {
+          inherit system;
+          overlays = [ (import rust-overlay) ];
         };
 
-        nodeModules = pkgs.stdenvNoCC.mkDerivation {
-          pname = "qmd-node-modules";
-          inherit version;
-
-          src = ./.;
-
-          impureEnvVars = pkgs.lib.fetchers.proxyImpureEnvVars ++ [
-            "GIT_PROXY_COMMAND"
-            "SOCKS_SERVER"
-          ];
-
-          nativeBuildInputs = [
-            pkgs.bun
-          ];
-
-          dontConfigure = true;
-
-          buildPhase = ''
-            export HOME=$(mktemp -d)
-
-            bun install \
-              --backend copyfile \
-              --frozen-lockfile \
-              --ignore-scripts \
-              --no-progress \
-              --production
-          '';
-
-          installPhase = ''
-            mkdir -p $out
-            cp -R node_modules $out/
-          '';
-
-          dontFixup = true;
-
-          outputHash = nodeModulesHashes.${system};
-          outputHashAlgo = "sha256";
-          outputHashMode = "recursive";
+        rustToolchain = pkgs.rust-bin.stable.latest.default.override {
+          extensions = [ "rust-src" "rust-analyzer" ];
         };
 
-        qmd = pkgs.stdenv.mkDerivation {
+        # Build the Rust binary
+        qmd = pkgs.rustPlatform.buildRustPackage {
           pname = "qmd";
-          inherit version;
+          version = "0.1.0";  # TODO: read from Cargo.toml in a real setup
 
           src = ./.;
 
-          nativeBuildInputs = [
-            pkgs.bun
-            pkgs.makeWrapper
-            pkgs.nodejs
-            pkgs.node-gyp
-            pkgs.python3  # needed by node-gyp to compile better-sqlite3
-          ] ++ pkgs.lib.optionals pkgs.stdenv.hostPlatform.isDarwin [
-            pkgs.darwin.cctools  # provides libtool needed by node-gyp on macOS
-          ];
+          cargoLock = {
+            lockFile = ./Cargo.lock;
+          };
 
+          nativeBuildInputs = [ pkgs.pkg-config ];
           buildInputs = [ pkgs.sqlite ];
 
-          buildPhase = ''
-            export HOME=$(mktemp -d)
-
-            cp -R ${nodeModules}/node_modules ./
-            chmod -R u+w node_modules
-
-            (cd node_modules/better-sqlite3 && node-gyp rebuild --release)
-          '';
-
-          installPhase = ''
-            mkdir -p $out/lib/qmd
-            mkdir -p $out/bin
-
-            cp -r node_modules $out/lib/qmd/
-            cp -r src $out/lib/qmd/
-            cp package.json $out/lib/qmd/
-
-            makeWrapper ${pkgs.bun}/bin/bun $out/bin/qmd \
-              --add-flags "$out/lib/qmd/src/cli/qmd.ts" \
-              --set DYLD_LIBRARY_PATH "${pkgs.sqlite.out}/lib" \
-              --set LD_LIBRARY_PATH "${pkgs.sqlite.out}/lib"
-          '';
+          # If you decide to use sqlite-vec as a loadable extension,
+          # you would add it here and set the appropriate env var / runtime path.
+          # For now we keep it simple (bundled rusqlite is used in the code).
 
           meta = with pkgs.lib; {
-            description = "On-device search engine for markdown notes, meeting transcripts, and knowledge bases";
-            homepage = "https://github.com/tobi/qmd";
+            description = "Secure, high-performance Rust implementation of QMD";
+            homepage = "https://github.com/simonellefsen/qmd-rust";
             license = licenses.mit;
-            platforms = platforms.unix;
+            mainProgram = "qmd";
           };
         };
       in
@@ -153,18 +58,21 @@
         };
 
         devShells.default = pkgs.mkShell {
-          buildInputs = [
-            pkgs.bun
-            sqliteWithExtensions
+          packages = [
+            rustToolchain
+            pkgs.pkg-config
+            pkgs.sqlite
+            # Add cargo tools you like:
+            # pkgs.cargo-watch
+            # pkgs.cargo-expand
           ];
 
           shellHook = ''
-            export BREW_PREFIX="''${BREW_PREFIX:-${sqliteWithExtensions.out}}"
-            echo "QMD development shell"
-            echo "Run: bun src/cli/qmd.ts <command>"
+            echo "QMD-Rust development shell"
+            echo "Run: cargo run -- <command>"
+            echo "     cargo fmt && cargo clippy -- -D warnings"
           '';
         };
       }
     );
-
 }
