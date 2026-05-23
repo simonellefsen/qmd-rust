@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 description = "Query Markup Documents - secure Rust port of the on-device hybrid search engine"
 license = "MIT"
-repository = "https://github.com/tobi/qmd"  # will become fork url later
+repository = "https://github.com/simonellefsen/qmd-rust"
 authors = ["QMD contributors (Rust port)"]
 
 [[bin]]
