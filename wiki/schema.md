@@ -113,6 +113,6 @@ cargo run -- search "reranker" -c qmd-rust-wiki
 - Root [AGENTS.md](../AGENTS.md) is the coding contract for this session / Codex.
 - This `wiki/schema.md` is the *knowledge wiki* contract.
 - The original idea is in [../llm-wiki.md](../llm-wiki.md) and archived as source-note in `sources/`.
-- The concrete working example that inspired this structure is the `rust_daytrader` project (a real-world Rust application that uses qmd + the exact same wiki layout with Hermes integration, multiple qmd collections, and Obsidian). Its wiki lives alongside the code in that repository.
+- This structure is inspired by real-world usage of the LLM Wiki pattern in production projects that combine qmd search with agent-driven maintenance and Obsidian for visualization.
 
 Update this schema when the port or the wiki maintenance process evolves.

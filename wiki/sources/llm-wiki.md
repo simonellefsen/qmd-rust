@@ -50,5 +50,5 @@ The Rust port makes this recommendation even stronger:
 ## Links
 
 - Original gist and full text: [../llm-wiki.md](../llm-wiki.md) (kept at repo root for easy access)
-- Concrete implementation example that follows this pattern: the `rust_daytrader` project (a real Rust codebase using qmd + Hermes + this wiki layout)
+- Concrete production examples that follow this pattern (Rust codebases using qmd + agent tooling + this wiki layout)
 - Concepts in this wiki that build on it: [../concepts/llm-wiki-for-search-tools](../concepts/llm-wiki-for-search-tools.md)

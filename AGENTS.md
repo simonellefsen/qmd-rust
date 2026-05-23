@@ -72,7 +72,7 @@ See original `src/store.ts`, `src/db.ts`, `src/llm.ts`, `src/cli/qmd.ts` and `do
 
 ## Project Knowledge Wiki (llm-wiki pattern)
 
-This repository now follows the concrete LLM-maintained wiki pattern demonstrated by the `rust_daytrader` project (a real-world Rust application that heavily uses qmd together with this exact wiki structure, Hermes agent, Obsidian, and multiple qmd collections).
+This repository follows the LLM-maintained wiki pattern (raw sources → synthesized interlinked markdown pages → schema/contract) described in llm-wiki.md. The `wiki/` directory in this repo is the living knowledge base for the qmd-rust port.
 
 - Read `wiki/index.md` **first** for any durable project knowledge (architecture, port status, model choices, why certain decisions were made).
 - Follow `wiki/schema.md` when creating or updating wiki pages.

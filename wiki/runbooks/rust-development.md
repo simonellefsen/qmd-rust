@@ -56,7 +56,7 @@ The Rust port must support the same (and mark `.qmd/` in `.gitignore`).
 
 ## Testing Against a Real Wiki
 
-The `daytrader-wiki` collection (the real-world llm-wiki from the sibling `rust_daytrader` project) is the best living test corpus for exercising search, context inheritance, frontmatter, and large result sets while developing qmd.
+Real-world LLM wikis (with frontmatter, typed pages, and cross-links) provide the best test corpus for exercising search, context inheritance, and large result sets while developing qmd. Your own indexed collections are the ideal corpus.
 
 Use it (via the Node qmd today, via Rust qmd once `collection list` / search work) to validate that qmd is a first-class citizen for the exact use case it was designed to support.
 

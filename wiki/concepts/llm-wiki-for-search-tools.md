@@ -8,7 +8,7 @@ updated: 2026-05-23
 sources:
   - wiki/sources/llm-wiki.md
   - https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f
-  - The llm-maintained-project-wiki concept page from the real-world `rust_daytrader` example (sibling repository)
+  - Real-world project wikis that apply the same three-layer pattern (raw sources, synthesized pages, schema)
 ---
 
 # qmd as the Search Backend for LLM-Maintained Wikis
@@ -38,7 +38,7 @@ When an LLM agent (Hermes, Codex, future systems) is in a tight loop maintaining
 - Cold-start time matters; `cargo run --` or a stripped `target/release/qmd` is fast.
 - MCP stdio transport is a first-class citizen (no extra JS shim).
 
-The existence of real projects (like rust_daytrader) that already wire qmd into their agent + wiki + Obsidian stack validates the design and gives us a living testbed.
+The existence of real projects that wire qmd into agent + wiki + Obsidian workflows validates the design and gives us excellent test data.
 
 ## Features qmd Should Grow to Better Serve Wikis
 
@@ -54,5 +54,5 @@ These are tracked in [../decisions/README](../decisions/README.md) and experimen
 
 - [schema](../schema.md)
 - [sources/llm-wiki](../sources/llm-wiki.md)
-- The `rust_daytrader` reference implementation (the living example that uses this exact pattern + qmd)
+- Real-world reference implementations that combine qmd search with the LLM Wiki pattern.
 - Root [llm-wiki.md](../../llm-wiki.md)

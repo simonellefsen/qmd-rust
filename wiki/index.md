@@ -53,4 +53,4 @@ qmd (the tool) is the recommended search backend for exactly this kind of persis
 - Stable docid + citation format that works well when agents file new wiki pages back into the index.
 - Integration points with Obsidian (graph, dataview on frontmatter) and future agent IDEs.
 
-See the working real-world example that inspired this structure: the `rust_daytrader` project (uses qmd + Hermes agent + Obsidian + this exact wiki layout with schema, index, log, typed pages, and multiple qmd collections).
+The structure follows the LLM Wiki pattern described in the root `llm-wiki.md` file and has been successfully used in multiple production projects that integrate qmd search with agent-driven knowledge maintenance.

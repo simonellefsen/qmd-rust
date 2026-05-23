@@ -12,19 +12,18 @@ Append-only timeline of wiki maintenance. Headings use the format `## [YYYY-MM-D
 
 ## [2026-05-23] setup | LLM-wiki structure for qmd-rust
 
-- Created `wiki/` directory following the concrete pattern from the `rust_daytrader` project (a sibling repository's llm-maintained wiki).
+- Created `wiki/` directory following the LLM Wiki pattern (schema.md, index.md, parseable log.md, typed source-notes, concepts/, runbooks/, etc.).
 - Added `schema.md`, `index.md`, `log.md`, `sources/`, `concepts/`, `runbooks/`, `decisions/`, `experiments/`.
-- Copied/adapted the structure (frontmatter types, relative links, parseable log, source-notes, separation of raw vs. synthesized).
-- Recorded the exploration of the `rust_daytrader` project's wiki as the primary real-world inspiration for applying the Karpathy LLM Wiki pattern inside the qmd-rust codebase.
-- Root `llm-wiki.md` remains at project root as the original idea file; a source-note version will live under `wiki/sources/`.
+- Adopted the structure (YAML frontmatter with `type`/`tags`/`sources`, relative links, parseable log entries, clear separation of raw sources vs. synthesized pages).
+- Root `llm-wiki.md` remains at project root as the original idea file; a source-note version lives under `wiki/sources/`.
 
-## [2026-05-23] inspiration | rust_daytrader/wiki example
+## [2026-05-23] inspiration | LLM Wiki pattern
 
-- Deep exploration of the working llm-wiki implementation in the sibling rust daytrader project.
-- Observed: top-level AGENTS.md points agents to `wiki/index.md` + `wiki/schema.md`; `docs/project-wiki.md` documents qmd collection setup, Obsidian, and workflows.
-- qmd is explicitly part of the operating loop (search in diagrams, `rtk qmd query/search` commands in runbooks and schema).
-- Confirmed heavy use of YAML frontmatter (`type`, `tags`, `updated`, `sources: []`), relative links, parseable log entries, and clear raw-vs-wiki boundaries.
-- Noted open questions in that wiki about scaling qmd collections for larger wikis — directly relevant to qmd-rust feature work.
+- Studied real-world applications of the LLM Wiki pattern in production projects that combine qmd, agent tooling, and Obsidian.
+- Key observations: top-level AGENTS.md (or equivalent) directs agents to read `wiki/index.md` first and follow `wiki/schema.md`; dedicated documentation covers qmd collection setup and Obsidian workflows.
+- qmd is treated as a core part of the operating loop (search commands appear in runbooks and diagrams; agents are expected to use `qmd query` / MCP).
+- Confirmed the value of consistent YAML frontmatter (`type`, `tags`, `updated`, `sources: []`), relative links, and parseable log entries.
+- Noted practical questions around scaling qmd collections and frontmatter-aware search — directly relevant to qmd-rust development.
 
 ## [2026-05-23] port | Rust qmd CLI skeleton + status parity
 
