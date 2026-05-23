@@ -1,6 +1,6 @@
 [package]
 name = "qmd"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2021"
 description = "Query Markup Documents - secure Rust port of the on-device hybrid search engine"
 license = "MIT"
@@ -35,3 +35,6 @@ rusqlite = { version = "0.32", features = ["bundled"] }  # bundled for FTS5 reli
 lto = true
 codegen-units = 1
 strip = true
+
+[profile.dist]
+inherits = "release"

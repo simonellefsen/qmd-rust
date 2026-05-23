@@ -107,6 +107,54 @@ fn main() -> Result<()> {
             )?;
         }
 
+        Some(Commands::Query {
+            query,
+            n,
+            all,
+            min_score,
+            format,
+            collection,
+            explain,
+            no_rerank,
+            full,
+            line_numbers,
+        }) => {
+            qmd::cli::commands::query::cmd_query(
+                query,
+                n,
+                all,
+                min_score,
+                format,
+                collection,
+                explain,
+                no_rerank,
+                full,
+                line_numbers,
+            )?;
+        }
+
+        Some(Commands::Vsearch {
+            query,
+            n,
+            all,
+            min_score,
+            format,
+            collection,
+            full,
+            line_numbers,
+        }) => {
+            qmd::cli::commands::query::cmd_vsearch(
+                query,
+                n,
+                all,
+                min_score,
+                format,
+                collection,
+                full,
+                line_numbers,
+            )?;
+        }
+
         Some(Commands::Mcp { http, port, daemon }) => {
             qmd::cli::commands::mcp::cmd_mcp(http, port, daemon)?;
         }
@@ -117,14 +165,17 @@ fn main() -> Result<()> {
         // During the port this is the polite way to tell the user (or an LLM agent)
         // "please use the mature Node version for this operation for now".
         // Once a command is implemented, you move its arm *above* this catch-all.
-        Some(Commands::Query { .. })
-        | Some(Commands::Vsearch { .. })
-        | Some(Commands::MultiGet { .. })
+        //
+        // Note: as of 0.3.0 Area 1 slice, `query` and `vsearch` are now wired (lex-only
+        // path via structured parser + FTS5; vec/hyde give graceful note). See roadmap.
+        Some(Commands::MultiGet { .. })
         | Some(Commands::Update { .. })
         | Some(Commands::Embed { .. })
         | Some(Commands::Context { .. })
         | Some(Commands::Bench { .. })
-        | Some(Commands::Skills { .. }) => {
+        | Some(Commands::Skills { .. })
+        | Some(Commands::Cleanup)
+        | Some(Commands::Skill { .. }) => {
             eprintln!("This command is not yet implemented in the Rust port.");
             eprintln!("During development, use the reference implementation:");
             eprintln!(
@@ -142,6 +193,6 @@ fn main() -> Result<()> {
 }
 
 // Command implementations have been fully extracted to src/cli/commands/*
-// (collection.rs, ls.rs, get.rs, search.rs, mcp.rs, status.rs) following the target modular layout.
-// Helpers (parse_qmd_virtual, escape_like, get_body_from_db) live in commands/mod.rs for sharing.
+// (collection.rs, ls.rs, get.rs, search.rs, mcp.rs, status.rs, query.rs) following the target modular layout.
+// Helpers (parse_qmd_virtual, escape_like, get_body_from_db, parse_structured_query) live in commands/mod.rs for sharing.
 // main.rs is now a thin entrypoint: parse + dispatch only.

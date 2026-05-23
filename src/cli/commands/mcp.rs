@@ -10,7 +10,7 @@ use std::env;
 use std::fs;
 use std::io::{self, BufRead, BufReader, Write};
 
-use super::get_body_from_db;
+use super::{get_body_from_db, parse_structured_query, ClauseKind, ParsedQuery};
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 const INDEX_PATH: &str = "~/.cache/qmd/index.sqlite";
@@ -94,7 +94,7 @@ fn run_mcp_stdio_loop() -> Result<()> {
                             },
                             {
                                 "name": "query",
-                                "description": "Lexical (BM25/FTS5) search. Pass {query: string}. (vec/hyde not in Rust yet)",
+                                "description": "Lexical (BM25/FTS5) search. 'query' can be plain text or structured (lex: ..., intent: ..., vec:/hyde: for future). vec/hyde currently return a note.",
                                 "inputSchema": { "type": "object", "properties": { "query": { "type": "string" }, "n": {"type":"number"}, "collection": {"type":"string"} } }
                             }
                         ]
@@ -197,20 +197,72 @@ fn run_mcp_stdio_loop() -> Result<()> {
                         let q = args.get("query").and_then(|v| v.as_str()).unwrap_or("");
                         let n = args.get("n").and_then(|v| v.as_u64()).unwrap_or(5) as usize;
                         let coll = args.get("collection").and_then(|v| v.as_str());
-                        if let Ok(hits) = db_search::fts_search(q, n, coll) {
-                            hits.iter()
-                                .map(|h| {
-                                    format!(
-                                        "{} {} (score {:.0}%)",
-                                        h.file,
-                                        h.docid,
-                                        h.score * 100.0
-                                    )
-                                })
-                                .collect::<Vec<_>>()
-                                .join("\n")
-                        } else {
-                            "search error".to_string()
+
+                        match parse_structured_query(q) {
+                            Ok(ParsedQuery::Simple(text)) => {
+                                if let Ok(hits) = db_search::fts_search(&text, n, coll) {
+                                    hits.iter()
+                                        .map(|h| {
+                                            format!(
+                                                "{} {} (score {:.0}%)",
+                                                h.file,
+                                                h.docid,
+                                                h.score * 100.0
+                                            )
+                                        })
+                                        .collect::<Vec<_>>()
+                                        .join("\n")
+                                } else {
+                                    "search error".to_string()
+                                }
+                            }
+                            Ok(ParsedQuery::Structured { clauses, .. }) => {
+                                let lex_parts: Vec<&str> = clauses
+                                    .iter()
+                                    .filter(|c| c.kind == ClauseKind::Lex)
+                                    .map(|c| c.text.as_str())
+                                    .collect();
+
+                                if lex_parts.is_empty() {
+                                    "Vector/HyDE search requires embeddings (Area 2 / v0.4.0)."
+                                        .to_string()
+                                } else {
+                                    let joined = lex_parts.join(" ");
+                                    if let Ok(hits) = db_search::fts_search(&joined, n, coll) {
+                                        hits.iter()
+                                            .map(|h| {
+                                                format!(
+                                                    "{} {} (score {:.0}%)",
+                                                    h.file,
+                                                    h.docid,
+                                                    h.score * 100.0
+                                                )
+                                            })
+                                            .collect::<Vec<_>>()
+                                            .join("\n")
+                                    } else {
+                                        "search error".to_string()
+                                    }
+                                }
+                            }
+                            Err(_) => {
+                                // backward compat for plain queries
+                                if let Ok(hits) = db_search::fts_search(q, n, coll) {
+                                    hits.iter()
+                                        .map(|h| {
+                                            format!(
+                                                "{} {} (score {:.0}%)",
+                                                h.file,
+                                                h.docid,
+                                                h.score * 100.0
+                                            )
+                                        })
+                                        .collect::<Vec<_>>()
+                                        .join("\n")
+                                } else {
+                                    "search error".to_string()
+                                }
+                            }
                         }
                     }
                     "multi_get" => {

@@ -2,27 +2,51 @@
 
 ## [Unreleased]
 
-### Added
+## [0.3.0] - 2026-05-24
 
-- **Rust port foundation**: Initialized Cargo binary (`qmd`), basic clap CLI that mirrors the original command surface (`query`, `search`, `status`, `get`, `collection`, `context`, `mcp`, `init`, etc.).
-- **Working `status` command**: The Rust binary can already read `~/.config/qmd/index.yml` and query the real SQLite index (documents, vectors, collections, last updated) — useful for parity testing against the Node reference.
-- **Extensive educational comments**: `src/main.rs` now contains beginner-friendly commentary aimed at Python/Node.js/TypeScript developers, explaining ownership, `Option`/`Result` + `?`, enums as ADTs, clap derive macros, rusqlite patterns, etc.
-- **Project knowledge wiki** (`wiki/`): Adopted the LLM Wiki pattern (schema.md, index.md, parseable log.md, typed source-notes under `sources/`, concepts, runbooks, decisions, experiments). Includes a dedicated `concepts/rust-for-python-node-developers.md` educational page for contributors coming from Python/Node/TypeScript.
-- **AGENTS.md**: Replaced the legacy `CLAUDE.md` with an agent instruction file adapted for Rust development, the llm-wiki pattern, and safe referencing of external inspiration projects.
-- Cleaned all wiki pages and documentation to contain only references that stay inside this repository (no more machine-specific absolute paths to sibling projects).
+### Added (Area 1 first slice — toward full hybrid search)
 
-### Changed
+- Structured query parser (`parse_structured_query`) faithfully ported from the TypeScript reference + `docs/SYNTAX.md` grammar. Supports `intent:`, `lex:`, `vec:`, `hyde:`, phrases, negation, etc. 14 unit/doc tests.
+- `qmd query` and `qmd vsearch` commands (lex path fully functional via existing high-fidelity FTS5 engine; vec/hyde emit clear "requires embeddings (Area 2)" message).
+- MCP `query` tool now accepts the same structured syntax as the CLI.
+- `--full` and `--line-numbers` flags added to `query`/`vsearch` for surface parity.
+- All changes are pure Rust, no new dependencies, maximal reuse of the existing `fts_search` / `build_fts5_query`.
 
-- `.gitignore`: Updated to allow `AGENTS.md` and standard Rust artifacts while preserving the spirit of the original rules.
+This is the first real, usable increment on the roadmap to full `query` + reranking parity (targeting 0.3.x series).
 
-### Distribution & Release (Rust port)
+See the detailed phased roadmap in the implementation summary for the full plan (5 areas, each ending in a tagged minor release).
 
-- **cargo-dist + multi-platform CI releases**: Full GitHub release automation for macOS (arm64 + x86_64), Linux (x86_64 gnu + musl), Windows (msvc + msi). Produces signed artifacts, checksums, and installers (shell, PowerShell, Homebrew formula).
-- **Homebrew tap**: Scaffolding for `simonellefsen/homebrew-qmd` with automatic formula updates on release (`brew tap simonellefsen/qmd && brew install qmd`).
-- **Simple `curl | sh` installer**: Added `install.sh` at repo root supporting `--version`, architecture detection, SHA-256 verification, and fallback install paths. One-liner: `curl -fsSL https://raw.githubusercontent.com/simonellefsen/qmd-rust/main/install.sh | sh`.
-- **Nix flake**: `flake.nix` provides `packages.qmd`, `apps.default`, and `devShells.default` (with rust-overlay for latest toolchain). Usable via `nix run github:simonellefsen/qmd-rust`.
-- Core CLI commands (status, collection, ls, get by path/docid, search, mcp) completed via modular extraction while preserving exact FTS5/BM25 behavior and output parity with the Node reference.
-- Extensive contributor docs: `wiki/runbooks/release.md`, `CONTRIBUTING.md`, `wiki/runbooks/rust-development.md`, and `AGENTS.md` now fully cover the release process and crate layout.
+## [0.2.0] - 2026-05-24
+
+Initial public release of the Rust port of QMD.
+
+This is a from-scratch, security-focused reimplementation of the original Node.js/TypeScript qmd tool. The primary goal is a small, auditable, single-binary CLI that is safe to invoke from LLM agents via MCP or direct shell use.
+
+### Highlights
+
+- **Secure single-binary distribution** — No more Node.js runtime or large attack surface for agent-driven tools.
+- **Full core functionality with exact parity**:
+  - `collection add/list/remove/rename`
+  - `ls`, `get` (by filesystem path or short docid `#abc123`)
+  - `search` (BM25 via SQLite FTS5 with the original query grammar, negation, phrases, CJK support)
+  - `status`
+  - `mcp` (stdio server for agents)
+- **Data compatibility** — Uses the exact same `~/.cache/qmd/index.sqlite` and `~/.config/qmd/index.yml` as the Node version. No re-indexing required when migrating.
+- **Easy installation**:
+  - `curl -fsSL https://raw.githubusercontent.com/simonellefsen/qmd-rust/main/install.sh | sh`
+  - `brew tap simonellefsen/qmd && brew install qmd` (auto-updated via cargo-dist)
+  - Nix flake + cargo install supported
+- Comprehensive contributor documentation using the LLM-wiki pattern (`wiki/`, `AGENTS.md`, `CONTRIBUTING.md`).
+
+### Internal
+
+- Complete modular refactor of the original ~1680-line monolith into a clean crate layout (`src/cli/`, `src/db/search.rs` with full FTS5 engine extraction, etc.).
+- `cargo-dist` 0.32 + GitHub Release workflow + Homebrew tap automation.
+- POSIX `install.sh` one-liner with checksum verification.
+
+See the [release runbook](wiki/runbooks/release.md) for the full packaging story.
+
+## [Unreleased] (next)
 
 ## [2.5.2] - 2026-05-22
 

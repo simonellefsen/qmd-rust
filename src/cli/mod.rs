@@ -3,6 +3,8 @@
 pub mod args;
 
 // Re-export the main types so callers can do `use qmd::cli::args::Cli;`
-pub use args::{Cli, Commands, OutputFormat};
+pub use args::{
+    Cli, CollectionAction, Commands, ContextAction, OutputFormat, SkillAction, SkillsAction,
+};
 
 pub mod commands;

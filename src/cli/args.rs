@@ -45,6 +45,12 @@ pub enum Commands {
         explain: bool,
         #[arg(long)]
         no_rerank: bool,
+        /// Show full document content (instead of snippet)
+        #[arg(long)]
+        full: bool,
+        /// Include line numbers with --full output
+        #[arg(long)]
+        line_numbers: bool,
     },
 
     /// Full-text BM25 keyword search (no LLM)
@@ -79,6 +85,12 @@ pub enum Commands {
         format: OutputFormat,
         #[arg(short = 'c', long)]
         collection: Option<String>,
+        /// (future) Show full document
+        #[arg(long)]
+        full: bool,
+        /// (future)
+        #[arg(long)]
+        line_numbers: bool,
     },
 
     /// Retrieve a document by path or docid (#abc123)
@@ -164,6 +176,15 @@ pub enum Commands {
         #[command(subcommand)]
         action: Option<SkillsAction>,
     },
+
+    /// Clear caches, orphaned vectors/content, vacuum DB (maintenance)
+    Cleanup,
+
+    /// Show or install the bundled QMD agent skill (for Claude/Cursor/etc)
+    Skill {
+        #[command(subcommand)]
+        action: SkillAction,
+    },
 }
 
 #[derive(Subcommand, Debug, Clone)]
@@ -206,6 +227,27 @@ pub enum SkillsAction {
     List,
     Get { name: String },
     Path { name: String },
+}
+
+#[derive(Subcommand, Debug, Clone)]
+pub enum SkillAction {
+    Show {
+        // Fields accepted for future extension / global option compatibility (from clap parse).
+        // TS singular `qmd skill show` (qmd.ts:4415) ignores them (only plural `skills` uses --full/--json);
+        // harmless to advertise; impl in Area 3 will ignore for exact singular-path fidelity.
+        #[arg(long)]
+        full: bool,
+        #[arg(long)]
+        json: bool,
+    },
+    Install {
+        #[arg(long)]
+        global: bool,
+        #[arg(short = 'f', long)]
+        force: bool,
+        #[arg(long)]
+        yes: bool,
+    },
 }
 
 #[derive(clap::ValueEnum, Debug, Clone, Copy, PartialEq, Eq, Default)]

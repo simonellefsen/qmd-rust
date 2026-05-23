@@ -14,7 +14,9 @@ pub mod db;
 // pub mod mcp;   // to be extracted later (MCP logic currently lives under cli::commands::mcp)
 // pub mod utils;
 
-pub use cli::args::{Cli, Commands, OutputFormat};
+pub use cli::args::{
+    Cli, CollectionAction, Commands, ContextAction, OutputFormat, SkillAction, SkillsAction,
+};
 pub use cli::commands; // command handlers (cmd_status, cmd_search, etc.) for dispatch and reuse
 pub use db::{
     db_counts, expand_tilde, get_collection_stats, last_updated_hint, load_config,
