@@ -15,6 +15,15 @@
 
 - `.gitignore`: Updated to allow `AGENTS.md` and standard Rust artifacts while preserving the spirit of the original rules.
 
+### Distribution & Release (Rust port)
+
+- **cargo-dist + multi-platform CI releases**: Full GitHub release automation for macOS (arm64 + x86_64), Linux (x86_64 gnu + musl), Windows (msvc + msi). Produces signed artifacts, checksums, and installers (shell, PowerShell, Homebrew formula).
+- **Homebrew tap**: Scaffolding for `simonellefsen/homebrew-qmd` with automatic formula updates on release (`brew tap simonellefsen/qmd && brew install qmd`).
+- **Simple `curl | sh` installer**: Added `install.sh` at repo root supporting `--version`, architecture detection, SHA-256 verification, and fallback install paths. One-liner: `curl -fsSL https://raw.githubusercontent.com/simonellefsen/qmd-rust/main/install.sh | sh`.
+- **Nix flake**: `flake.nix` provides `packages.qmd`, `apps.default`, and `devShells.default` (with rust-overlay for latest toolchain). Usable via `nix run github:simonellefsen/qmd-rust`.
+- Core CLI commands (status, collection, ls, get by path/docid, search, mcp) completed via modular extraction while preserving exact FTS5/BM25 behavior and output parity with the Node reference.
+- Extensive contributor docs: `wiki/runbooks/release.md`, `CONTRIBUTING.md`, `wiki/runbooks/rust-development.md`, and `AGENTS.md` now fully cover the release process and crate layout.
+
 ## [2.5.2] - 2026-05-22
 
 ### Fixes

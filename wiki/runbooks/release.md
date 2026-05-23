@@ -32,7 +32,9 @@ The goal is to provide a small, static-ish binary with minimal runtime dependenc
 
 - `cargo build --release` produces a working `target/release/qmd`.
 - We have a basic Nix flake (`flake.nix`) that builds the package and provides a `devShell`.
-- No official Homebrew formula or cargo-dist setup yet.
+- `cargo-dist` setup is complete (`dist-workspace.toml`, regenerated `.github/workflows/release.yml`, Homebrew + shell + msi + powershell installers).
+- `homebrew-tap/` scaffolding + `install.sh` (curl|sh) are in place.
+- The release workflow automatically updates the `simonellefsen/homebrew-qmd` tap and produces GitHub releases with prebuilts.
 
 ### Recommended Future Packaging Stack
 
@@ -92,6 +94,24 @@ We should converge on a modern Rust-friendly release pipeline:
    **Quick & dirty (not recommended long-term)**
    - Users can do `brew install --HEAD` against a tap, or use a raw GitHub URL formula. These break easily and should only be used for testing.
 
+### Simple `curl ... | sh` installer
+
+A small, self-contained `install.sh` is provided at the repository root (also referenced by the one-liner in the main README).
+
+- Detects macOS/Linux + architecture and selects the appropriate cargo-dist artifact (`qmd-<target>.tar.xz` + `.sha256`).
+- Defaults to the latest non-prerelease; `--version TAG` (or `v0.2.0-test`) supported.
+- Verifies SHA-256 checksum before extraction.
+- Installs to `/usr/local/bin` (if writable) or `~/.local/bin`, creates dirs as needed.
+- Clear success messages and PATH hints.
+
+One-liner (also documented in README and `homebrew-tap/README.md`):
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/simonellefsen/qmd-rust/main/install.sh | sh
+```
+
+The script is intentionally minimal (~100 lines) and meant to be reviewed before use. It complements the package-manager flows.
+
 ## Proposed Release Pipeline (Target)
 
 1. Tag a release (`git tag v0.2.0`).
@@ -103,11 +123,77 @@ We should converge on a modern Rust-friendly release pipeline:
 
 ## Action Items / Next Steps
 
-- Adopt `cargo-dist` (add it via `cargo dist init` and the generated GitHub workflow).
-- The tap scaffolding now lives in `homebrew-tap/` in this repository. The tap repo should be `simonellefsen/homebrew-qmd` and contain the contents of `homebrew-tap/`.
-- Update `flake.nix` to produce a proper package + improve the Home Manager module.
-- Write a small install script that works without Homebrew/Nix (`curl ... | sh`).
+- ~~Adopt `cargo-dist` (add it via `cargo dist init` and the generated GitHub workflow).~~ **Done** (0.32.0, with Homebrew tap = `simonellefsen/homebrew-qmd`).
+- ~~The tap scaffolding now lives in `homebrew-tap/` ...~~ **Done** — see `homebrew-tap/README.md` for bootstrap instructions (CI populates Formula on first release; needs `HOMEBREW_TAP_TOKEN` secret in repo settings).
+- ~~Update `flake.nix` to produce a proper package + improve the Home Manager module.~~ **Partially done** (dynamic version from Cargo.toml + future module stub; full HM module still welcome).
+- ~~Write a small install script that works without Homebrew/Nix (`curl ... | sh`).~~ **Done** — `install.sh` at repo root (see below for verification).
 - Keep the changelog discipline (Unreleased → versioned on release).
+- **Manual follow-up (the 4 steps requested for first release)**: See the numbered checklist immediately below. These are the concrete actions to take *outside* this repo (GitHub UI + local git tag).
+
+## First Real Release Checklist (the 1-4 steps + installer)
+
+These complete the release scaffolding:
+
+1. **Create the tap repo**
+   - Go to GitHub → New repository under your account `simonellefsen`:
+     - Name: `homebrew-qmd`
+     - Public, initialize with README (or empty).
+   - This matches the `tap = "simonellefsen/homebrew-qmd"` in `dist-workspace.toml`.
+   - After creation, the first `cargo dist` publish job (on tag) will push the generated Formula/qmd.rb into it using the secret below.
+
+2. **(Recommended) Run `cargo dist init` locally (refresh)**
+   - If you change targets/installers in `dist-workspace.toml`, re-run to update generated files:
+     ```sh
+     cargo dist init -y --skip-generate   # or without --skip to let it touch CI too
+     cargo dist generate                  # refresh .github/workflows/release.yml + installers if needed
+     ```
+   - We already ran the equivalent during setup; only needed on config changes. Commit any diff.
+
+3. **Test the release flow (tag + push --tags)**
+   - Choose a prerelease tag first (e.g. v0.2.0-test or v0.3.0-alpha.1) so you can delete if needed.
+   - Ensure `## [Unreleased]` in CHANGELOG.md has the entries for this version.
+   - `git tag -a v0.2.0-test -m "Test release for cargo-dist + installer"`
+   - `git push origin main --tags`
+   - Watch the "Release" workflow in GitHub Actions (it runs `dist plan` then builds on all runners).
+   - On success, a GitHub Release appears with all the .tar.xz, .zip, .msi, checksums, and the Homebrew formula is auto-pushed to the tap (if secret configured).
+   - Test installers:
+     - The generated `qmd-installer.sh` from the release assets.
+     - Our custom one-liner (see verification below).
+   - Delete the test tag + release + git push origin :v0.2.0-test if anything looks wrong.
+
+4. **(Optional but nice) Polish + docs + real release**
+   - Add the `HOMEBREW_TAP_TOKEN` secret (classic PAT with `repo` scope, or fine-grained with Contents:write on the tap repo) to the **qmd-rust** repo Settings → Secrets → Actions.
+   - Improve flake further or add more wiki pages.
+   - When ready: repeat step 3 with a real `v0.2.0` (or next semver), then `brew tap simonellefsen/qmd && brew install qmd` from any machine to verify.
+
+### Verifying the curl | sh installer (post-first-release)
+
+After a successful tag+release that produced `qmd-aarch64-apple-darwin.tar.xz` + `.sha256` etc. in the GitHub Release:
+
+```sh
+# From a fresh macOS/Linux shell (no qmd yet)
+curl -fsSL https://raw.githubusercontent.com/simonellefsen/qmd-rust/main/install.sh | sh
+
+# Or pin a version (useful for the test tag)
+curl -fsSL https://raw.githubusercontent.com/simonellefsen/qmd-rust/main/install.sh | sh -s -- --version v0.2.0-test
+
+# Custom dest
+./install.sh --to ~/bin --version v0.2.0
+```
+
+The script:
+- Auto-detects macOS arm64/x86_64 → aarch64/x86_64-apple-darwin (uses the musl for Linux x86_64)
+- Downloads + verifies SHA (graceful if no sha256sum/shasum)
+- Installs to /usr/local/bin (if writable) or ~/.local/bin
+- Prints PATH hint and `qmd --version`
+
+Also documented in README.md and `homebrew-tap/README.md`.
+
+### Post-release maintenance
+
+- The `publish-homebrew-formula` job in the Release workflow keeps the tap in sync.
+- Update `wiki/runbooks/release.md` and CHANGELOG with any new packaging gotchas.
+- For major bumps, consider adding more Linux targets (aarch64-unknown-linux-musl) by editing `targets` in dist-workspace.toml and re-running init/generate.
 
 Once the above is in place, installing the Rust qmd will be as easy as the original Node version was, while keeping the security and performance benefits of a native binary.
 

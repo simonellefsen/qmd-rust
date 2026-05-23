@@ -23,7 +23,7 @@
         # Build the Rust binary
         qmd = pkgs.rustPlatform.buildRustPackage {
           pname = "qmd";
-          version = "0.1.0";  # TODO: read from Cargo.toml in a real setup
+          version = (builtins.fromTOML (builtins.readFile ./Cargo.toml)).package.version;
 
           src = ./.;
 
@@ -56,6 +56,9 @@
           type = "app";
           program = "${qmd}/bin/qmd";
         };
+
+        # Future: expose a Home Manager module for declarative `programs.qmd.enable` + index config.
+        # See wiki/runbooks/release.md for the planned improvement.
 
         devShells.default = pkgs.mkShell {
           packages = [
