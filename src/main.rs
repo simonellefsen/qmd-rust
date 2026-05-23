@@ -42,6 +42,10 @@ const CONFIG_DIR: &str = "~/.config/qmd";
 
 // Use the extracted CLI argument types from the library
 use qmd::cli::args::{Cli, CollectionAction, Commands, ContextAction, OutputFormat, SkillsAction};
+use qmd::db::{
+    load_config, db_counts, last_updated_hint, expand_tilde,
+    open_connection, get_collection_stats, load_config_value, save_config_value,
+};
 
 /// The program entry point (like `if __name__ == "__main__":` in Python or
 /// the body of `bin/qmd` + the default export in the original TS CLI).
@@ -241,88 +245,13 @@ fn cmd_status(json: bool) -> Result<()> {
 /// `std::env::var_os("HOME")` returns an `OsString` (platform-native string).
 /// `.to_string_lossy()` turns it into a `Cow<str>` that is cheap to use in `format!`.
 ///
-/// This helper exists because the original Node code and the user's config files
-/// use the familiar `~` shortcut. In a real application you would usually use the
-/// `dirs` or `home` crate, but a tiny manual version is fine for teaching.
-fn expand_tilde(p: &str) -> String {
-    if let Some(home) = env::var_os("HOME") {
-        if let Some(stripped) = p.strip_prefix("~/") {
-            return format!("{}/{}", home.to_string_lossy(), stripped);
-        }
-    }
-    p.to_string()
-}
+// expand_tilde, load_config, db_counts, etc. have been moved to src/db/mod.rs
+// They are available via `use qmd::db::*;` (already imported at top of file).
 
-// -----------------------------------------------------------------------------
-// Config (index.yml) + partial DB status for `qmd status`
-// -----------------------------------------------------------------------------
-//
-// These structs + the functions below demonstrate several important Rust idioms
-// that will appear everywhere once we port the real store/db logic:
-//
-// - `#[derive(Deserialize)]` + serde = automatic deserialization (like Pydantic
-//   `BaseModel` or a Zod schema). The field names must match the YAML keys
-//   (or you use `#[serde(rename = "...")]`).
-// - `Option<T>` for "this key might be missing".
-// - `HashMap<K, V>` is Rust's hash table (very close to Python `dict` or JS object/Map).
-// - Helper functions that return `Result` or `Option` for fallible operations.
-// - The `?` operator + `.with_context(...)` from anyhow for rich error messages.
+// QmdConfig, CollectionCfg, ModelsCfg have been moved to src/db/mod.rs
+// They are re-exported via the crate root.
 
-/// The top-level shape of `~/.config/qmd/index.yml`.
-/// Collections and model overrides live here (the DB is the runtime cache).
-#[derive(Debug, Deserialize, Default)]
-struct QmdConfig {
-    /// Map from collection name → its configuration.
-    /// Using `HashMap` because the YAML is a mapping under the `collections:` key.
-    collections: Option<std::collections::HashMap<String, CollectionCfg>>,
-    models: Option<ModelsCfg>,
-}
-
-/// One entry under `collections:` in the YAML.
-/// Example:
-///   mynotes:
-///     path: /home/user/notes
-///     pattern: "**/*.md"
-#[derive(Debug, Deserialize)]
-struct CollectionCfg {
-    path: String,
-    /// We provide a default so the YAML doesn't have to repeat the common case.
-    #[serde(default = "default_pattern")]
-    pattern: String,
-}
-
-/// Used by serde's `default` attribute above.
-fn default_pattern() -> String {
-    "**/*.md".to_string()
-}
-
-#[derive(Debug, Deserialize, Default)]
-struct ModelsCfg {
-    embed: Option<String>,
-    generate: Option<String>,
-    rerank: Option<String>,
-}
-
-/// Read and parse the user's `~/.config/qmd/index.yml`.
-///
-/// Returns a default (empty) config if the file does not exist — this is
-/// intentional so `qmd status` never hard-fails just because the user hasn't
-/// created any collections yet.
-///
-/// The `?` + `.with_context(...)` pattern is the Rust way to add human-readable
-/// context to errors without losing the original cause (very useful when an
-/// agent or user sees the error message).
-fn load_config() -> Result<QmdConfig> {
-    let path = PathBuf::from(expand_tilde("~/.config/qmd/index.yml"));
-    if !path.exists() {
-        return Ok(QmdConfig::default());
-    }
-    let text =
-        fs::read_to_string(&path).with_context(|| format!("failed to read {}", path.display()))?;
-    let cfg: QmdConfig = serde_yaml::from_str(&text)
-        .with_context(|| format!("failed to parse YAML at {}", path.display()))?;
-    Ok(cfg)
-}
+// load_config moved to src/db/mod.rs and re-exported
 
 /// Try to open the SQLite index read-only and return (document_count, vector_count).
 ///
@@ -340,43 +269,7 @@ fn load_config() -> Result<QmdConfig> {
 ///   makes it hard to misuse the row after the query finishes.
 /// - `unwrap_or(0)` — if the count query somehow fails, treat it as zero instead
 ///   of crashing the status command.
-fn db_counts(db_path: &str) -> Option<(u32, u32)> {
-    let expanded = expand_tilde(db_path);
-    let conn =
-        Connection::open_with_flags(&expanded, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY).ok()?;
-    let doc_count: u32 = conn
-        .query_row("SELECT COUNT(*) FROM documents WHERE active=1", [], |r| {
-            r.get(0)
-        })
-        .unwrap_or(0);
-    let vec_count: u32 = conn
-        .query_row("SELECT COUNT(*) FROM content_vectors", [], |r| r.get(0))
-        .unwrap_or(0);
-    Some((doc_count, vec_count))
-}
-
-/// Same idea as `db_counts`, but we only want the most recent `modified_at` timestamp
-/// so the status output can say "Updated: ...".
-///
-/// `COALESCE` is SQLite's `COALESCE` / `IFNULL` (returns the first non-null value).
-/// `unwrap_or_default()` on a `String` gives you `""`.
-fn last_updated_hint(db_path: &str) -> Option<String> {
-    let expanded = expand_tilde(db_path);
-    let conn =
-        Connection::open_with_flags(&expanded, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY).ok()?;
-    let ts: String = conn
-        .query_row(
-            "SELECT COALESCE(MAX(modified_at), '') FROM documents WHERE active=1",
-            [],
-            |r| r.get(0),
-        )
-        .unwrap_or_default();
-    if ts.is_empty() {
-        None
-    } else {
-        Some(ts)
-    }
-}
+// db_counts and last_updated_hint moved to src/db/mod.rs
 
 // =============================================================================
 // Core command implementations for daily llm-wiki use (collection, ls, get, search, mcp, enhanced status helpers)
@@ -384,63 +277,8 @@ fn last_updated_hint(db_path: &str) -> Option<String> {
 // FTS5 query builder ported manually (no new deps).
 // =============================================================================
 
-fn open_connection(read_only: bool) -> Result<Connection> {
-    let expanded = expand_tilde(INDEX_PATH);
-    if !read_only {
-        if let Some(parent) = std::path::Path::new(&expanded).parent() {
-            let _ = fs::create_dir_all(parent);
-        }
-    }
-    let flags = if read_only {
-        rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY
-    } else {
-        rusqlite::OpenFlags::SQLITE_OPEN_READ_WRITE | rusqlite::OpenFlags::SQLITE_OPEN_CREATE
-    };
-    Connection::open_with_flags(&expanded, flags)
-        .with_context(|| format!("failed to open DB at {}", expanded))
-}
-
-fn get_collection_stats(name: &str) -> (u32, String) {
-    if let Ok(conn) = open_connection(true) {
-        if let Ok((cnt, last)) = conn.query_row(
-            "SELECT COUNT(*) , COALESCE(MAX(modified_at), '') FROM documents WHERE collection = ? AND active = 1",
-            [name],
-            |r| Ok((r.get::<_, u32>(0).unwrap_or(0), r.get::<_, String>(1).unwrap_or_default())),
-        ) {
-            return (cnt, last);
-        }
-    }
-    (0, "unknown".to_string())
-}
-
-// --- YAML Value roundtrip for collection mgmt (preserves extra keys like global_context, per-coll context) ---
-
-fn load_config_value() -> Result<serde_yaml::Value> {
-    let path = PathBuf::from(expand_tilde("~/.config/qmd/index.yml"));
-    if !path.exists() {
-        let mut root = serde_yaml::Mapping::new();
-        root.insert(
-            serde_yaml::Value::String("collections".into()),
-            serde_yaml::Value::Mapping(serde_yaml::Mapping::new()),
-        );
-        return Ok(serde_yaml::Value::Mapping(root));
-    }
-    let text =
-        fs::read_to_string(&path).with_context(|| format!("failed to read {}", path.display()))?;
-    let v: serde_yaml::Value = serde_yaml::from_str(&text)
-        .with_context(|| format!("failed to parse YAML at {}", path.display()))?;
-    Ok(v)
-}
-
-fn save_config_value(v: &serde_yaml::Value) -> Result<()> {
-    let path = PathBuf::from(expand_tilde("~/.config/qmd/index.yml"));
-    if let Some(dir) = path.parent() {
-        let _ = fs::create_dir_all(dir);
-    }
-    let text = serde_yaml::to_string(v).context("failed to serialize config to YAML")?;
-    fs::write(&path, text).with_context(|| format!("failed to write {}", path.display()))?;
-    Ok(())
-}
+// open_connection, get_collection_stats, load_config_value, save_config_value
+// are being moved into src/db/ during the ongoing modularization.
 
 // --- Collection commands (full parity for YAML + store_collections + basic DB cleanup) ---
 
