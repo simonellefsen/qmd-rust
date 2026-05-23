@@ -9,6 +9,8 @@ updated: 2026-05-23
 
 # Release Process for QMD-Rust
 
+> **Note**: We now have working `cargo-dist` configuration and Homebrew tap scaffolding in this repository (`dist-workspace.toml`, `.github/workflows/release.yml`, and the `homebrew-tap/` directory).
+
 This runbook covers how we package and distribute the Rust binary, maintain the changelog, and support installation via Nix, Homebrew, and other methods.
 
 ## Changelog Rules
@@ -102,7 +104,7 @@ We should converge on a modern Rust-friendly release pipeline:
 ## Action Items / Next Steps
 
 - Adopt `cargo-dist` (add it via `cargo dist init` and the generated GitHub workflow).
-- Decide on the Homebrew tap name (`homebrew-qmd` or `qmd` under the simonellefsen org).
+- The tap scaffolding now lives in `homebrew-tap/` in this repository. The tap repo should be `simonellefsen/homebrew-qmd` and contain the contents of `homebrew-tap/`.
 - Update `flake.nix` to produce a proper package + improve the Home Manager module.
 - Write a small install script that works without Homebrew/Nix (`curl ... | sh`).
 - Keep the changelog discipline (Unreleased → versioned on release).

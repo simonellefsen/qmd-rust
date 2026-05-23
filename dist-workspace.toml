@@ -1,0 +1,50 @@
+[workspace]
+members = ["."]
+
+# The preferred cargo-dist version to use in CI (Cargo.toml SemVer syntax)
+cargo-dist-version = "0.28.0"
+
+# CI backends to support
+ci = ["github"]
+
+# The installers to generate for each app
+installers = ["shell", "homebrew", "msi", "powershell"]
+
+# Target platforms to build apps for (Rust target-triple syntax)
+targets = [
+  "aarch64-apple-darwin",
+  "x86_64-apple-darwin",
+  "x86_64-unknown-linux-gnu",
+  "x86_64-unknown-linux-musl",
+  "x86_64-pc-windows-msvc",
+]
+
+# Publish jobs to run in CI
+publish-jobs = ["./publish-crates"]
+
+# Which actions to run on which platforms
+pr-run-mode = "plan"
+
+# Whether to install dependencies needed to build.
+enable-cargo-install = true
+
+# The archive format to use for non-windows builds (defaults to ".tar.xz")
+unix-archive = ".tar.xz"
+
+# The archive format to use for windows builds (defaults to ".zip")
+windows-archive = ".zip"
+
+# Whether to auto-include files like READMEs, LICENSE, etc.
+auto-includes = true
+
+# Whether to sign the binaries with a cosign key (requires setting up cosign)
+# signing = "cosign"
+
+[dist.github-custom-runners]
+# You can add custom runners here if you need more power (e.g. for cross-compilation)
+# aarch64-unknown-linux-gnu = "ubuntu-22.04"
+
+[dist.dependencies]
+# If you need system libraries at build time, declare them here.
+# Example for sqlite if you ever switch away from bundled:
+# "libsqlite3-dev" = { version = "*", targets = ["x86_64-unknown-linux-gnu"] }
