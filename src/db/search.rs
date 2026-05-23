@@ -1,15 +1,10 @@
-//! Full-text search (BM25 via SQLite FTS5).
-//!
-//! This module contains the query sanitization and FTS5 builder ported from the
-//! original TypeScript implementation (src/store.ts) for behavioral parity.
+//! Full-text search (BM25 via SQLite FTS5) — faithful port of the original logic.
 
 use anyhow::Result;
-use rusqlite::Connection;
 
-use super::{expand_tilde, open_connection};
+use super::open_connection;
 
-/// Result of an FTS5 search.
-#[derive(Debug, Clone)]
+#[derive(serde::Serialize, Debug, Clone)]
 pub struct FtsHit {
     pub file: String,
     pub docid: String,
@@ -18,7 +13,7 @@ pub struct FtsHit {
     pub snippet: String,
 }
 
-// --- CJK and sanitization helpers (faithful port) ---
+// === CJK & sanitization helpers (exact semantics from original store.ts) ===
 
 pub fn is_cjk_char(c: char) -> bool {
     let cp = c as u32;
@@ -46,6 +41,7 @@ pub fn normalize_cjk_for_fts(text: &str) -> String {
                 out.push(' ');
                 i += 1;
             }
+            out.push(' ');
         } else {
             out.push(cs[i]);
             i += 1;
@@ -55,125 +51,205 @@ pub fn normalize_cjk_for_fts(text: &str) -> String {
 }
 
 pub fn sanitize_fts5_term(term: &str) -> String {
-    // Very simplified version of the original logic for now.
-    // The full port is quite long; this keeps the build working.
-    term.replace(|c: char| !c.is_alphanumeric() && c != '\'', " ")
-        .split_whitespace()
+    term.chars()
+        .filter(|c| c.is_alphanumeric() || *c == '\'' || *c == '_')
+        .collect::<String>()
+        .to_lowercase()
+}
+
+pub fn is_hyphenated_token(term: &str) -> bool {
+    if !term.contains('-') || term.starts_with('-') || term.ends_with('-') {
+        return false;
+    }
+    let parts: Vec<&str> = term.split('-').collect();
+    let alnum_parts = parts
+        .iter()
+        .filter(|p| !p.is_empty() && p.chars().all(|c| c.is_alphanumeric() || c == '\''))
+        .count();
+    alnum_parts >= 2
+}
+
+pub fn sanitize_hyphenated_term(term: &str) -> String {
+    term.split('-')
+        .map(sanitize_fts5_term)
+        .filter(|t| !t.is_empty())
         .collect::<Vec<_>>()
         .join(" ")
 }
 
-pub fn is_hyphenated_token(term: &str) -> bool {
-    let parts: Vec<&str> = term.split('-').collect();
-    parts.len() > 1 && parts.iter().all(|p| !p.is_empty() && p.chars().all(|c| c.is_alphanumeric() || c == '\''))
-}
-
-pub fn sanitize_hyphenated_term(term: &str) -> String {
-    term.replace('-', " ")
-}
-
 pub fn sanitize_fts5_phrase(phrase: &str) -> String {
-    format!("\"{}\"", phrase.replace('"', ""))
+    normalize_cjk_for_fts(phrase)
+        .split_whitespace()
+        .map(sanitize_fts5_term)
+        .filter(|t| !t.is_empty())
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 pub fn build_fts5_query(query: &str) -> Option<String> {
-    // For the initial extraction we keep a working (if slightly simplified) version.
-    // The full faithful port from the TS code can be moved here later.
-    if query.trim().is_empty() {
-        return None;
-    }
-
-    let mut parts = Vec::new();
-    for token in query.split_whitespace() {
-        if token.starts_with('-') {
-            let t = token.trim_start_matches('-');
-            if !t.is_empty() {
-                parts.push(format!("NOT {}", sanitize_fts5_term(t)));
+    let mut positive: Vec<String> = Vec::new();
+    let mut negative: Vec<String> = Vec::new();
+    let s = query.trim();
+    let cs: Vec<char> = s.chars().collect();
+    let mut i = 0;
+    while i < cs.len() {
+        while i < cs.len() && cs[i].is_whitespace() {
+            i += 1;
+        }
+        if i >= cs.len() {
+            break;
+        }
+        let negated = cs[i] == '-';
+        if negated {
+            i += 1;
+        }
+        if i >= cs.len() {
+            break;
+        }
+        if cs[i] == '"' {
+            i += 1;
+            let start = i;
+            while i < cs.len() && cs[i] != '"' {
+                i += 1;
             }
-        } else if token.starts_with('"') && token.ends_with('"') {
-            parts.push(sanitize_fts5_phrase(&token[1..token.len()-1]));
-        } else if is_hyphenated_token(token) {
-            parts.push(sanitize_hyphenated_term(token));
+            let phrase: String = cs[start..i].iter().collect();
+            if i < cs.len() {
+                i += 1;
+            }
+            let sanitized = sanitize_fts5_phrase(&phrase);
+            if !sanitized.is_empty() {
+                let fts = format!("\"{}\"", sanitized);
+                if negated {
+                    negative.push(fts);
+                } else {
+                    positive.push(fts);
+                }
+            }
         } else {
-            parts.push(sanitize_fts5_term(token));
+            let start = i;
+            while i < cs.len() && !(cs[i].is_whitespace() || cs[i] == '"') {
+                i += 1;
+            }
+            let term: String = cs[start..i].iter().collect();
+            if is_hyphenated_token(&term) {
+                let sanitized = sanitize_hyphenated_term(&term);
+                if !sanitized.is_empty() {
+                    let fts = format!("\"{}\"", sanitized);
+                    if negated {
+                        negative.push(fts);
+                    } else {
+                        positive.push(fts);
+                    }
+                }
+            } else if contains_cjk(&term) {
+                let sanitized = sanitize_fts5_phrase(&term);
+                if !sanitized.is_empty() {
+                    let fts = format!("\"{}\"", sanitized);
+                    if negated {
+                        negative.push(fts);
+                    } else {
+                        positive.push(fts);
+                    }
+                }
+            } else {
+                let sanitized = sanitize_fts5_term(&term);
+                if !sanitized.is_empty() {
+                    let fts = format!("\"{}\"*", sanitized);
+                    if negated {
+                        negative.push(fts);
+                    } else {
+                        positive.push(fts);
+                    }
+                }
+            }
         }
     }
-
-    if parts.is_empty() {
-        None
-    } else {
-        Some(parts.join(" AND "))
+    if positive.is_empty() {
+        return None;
     }
+    let mut res = positive.join(" AND ");
+    for neg in negative {
+        res = format!("{} NOT {}", res, neg);
+    }
+    Some(res)
 }
 
-/// Perform an FTS5 BM25 search.
 pub fn fts_search(query: &str, limit: usize, collection: Option<&str>) -> Result<Vec<FtsHit>> {
-    let fts_query = match build_fts5_query(query) {
+    let fts_q = match build_fts5_query(query) {
         Some(q) => q,
         None => return Ok(vec![]),
     };
-
     let conn = open_connection(true)?;
+    let limit_i = limit as i64;
 
-    let mut sql = String::from(
-        r#"
-        SELECT d.path, d.hash, c.doc, bm25(documents_fts) as score
-        FROM documents_fts
-        JOIN documents d ON d.id = documents_fts.rowid
-        JOIN content c ON c.hash = d.hash
-        WHERE documents_fts MATCH ?
-        "#,
-    );
-
-    if collection.is_some() {
-        sql.push_str(" AND d.collection = ?");
-    }
-
-    sql.push_str(" ORDER BY score LIMIT ?");
-
-    let mut stmt = conn.prepare(&sql)?;
-
-    let mut hits = Vec::new();
-
-    if let Some(coll) = collection {
-        let mut rows = stmt.query((&fts_query, coll, limit as i64))?;
-        while let Some(row) = rows.next()? {
-            let path: String = row.get(0)?;
-            let hash: String = row.get(1)?;
-            let doc: String = row.get(2)?;
-            let score: f64 = row.get(3)?;
-
-            let title = doc.lines().next().unwrap_or(&path).to_string();
-            let snippet = doc.chars().take(220).collect();
-
-            hits.push(FtsHit {
-                file: path,
-                docid: hash.chars().take(6).collect(),
+    if let Some(c) = collection {
+        let fts_limit = (limit * 10) as i64;
+        let sql = r#"
+            WITH fts_matches AS (
+              SELECT rowid, bm25(documents_fts, 1.5, 4.0, 1.0) as sc
+              FROM documents_fts
+              WHERE documents_fts MATCH ?
+              ORDER BY sc ASC
+              LIMIT ?
+            )
+            SELECT
+              'qmd://' || d.collection || '/' || d.path as filepath,
+              d.title, d.hash, content.doc as body, fm.sc
+            FROM fts_matches fm
+            JOIN documents d ON d.id = fm.rowid
+            JOIN content ON content.hash = d.hash
+            WHERE d.active = 1 AND d.collection = ?
+            ORDER BY fm.sc ASC LIMIT ?
+        "#;
+        let mut stmt = conn.prepare(sql)?;
+        let rows_iter = stmt.query_map(rusqlite::params![fts_q, fts_limit, c, limit_i], |r| {
+            let filepath: String = r.get(0)?;
+            let title: String = r.get(1)?;
+            let hash: String = r.get(2)?;
+            let body: String = r.get(3)?;
+            let sc: f64 = r.get(4)?;
+            let score = (sc.abs() / (1.0 + sc.abs())) as f32;
+            let docid = if hash.len() >= 6 {
+                format!("#{}", &hash[0..6])
+            } else {
+                format!("#{}", hash)
+            };
+            let snippet: String = body.chars().take(220).collect();
+            Ok(FtsHit {
+                file: filepath,
+                docid,
                 title,
-                score: (1.0 - (score as f32 / 100.0)).clamp(0.0, 1.0),
+                score,
                 snippet,
-            });
-        }
+            })
+        })?;
+        let rows: Vec<FtsHit> = rows_iter.filter_map(|x| x.ok()).collect();
+        Ok(rows)
     } else {
-        let mut rows = stmt.query((&fts_query, limit as i64))?;
-        while let Some(row) = rows.next()? {
-            let path: String = row.get(0)?;
-            let hash: String = row.get(1)?;
-            let doc: String = row.get(2)?;
-            let score: f64 = row.get(3)?;
-
-            let title = doc.lines().next().unwrap_or(&path).to_string();
-            let snippet = doc.chars().take(220).collect();
-
-            hits.push(FtsHit {
-                file: path,
-                docid: hash.chars().take(6).collect(),
+        let sql = "SELECT 'qmd://' || d.collection || '/' || d.path as filepath, d.title, d.hash, content.doc as body, bm25(documents_fts, 1.5, 4.0, 1.0) as sc FROM documents_fts JOIN documents d ON d.id = documents_fts.rowid JOIN content ON content.hash = d.hash WHERE documents_fts MATCH ? AND d.active = 1 ORDER BY sc ASC LIMIT ?";
+        let mut stmt = conn.prepare(sql)?;
+        let rows_iter = stmt.query_map(rusqlite::params![fts_q, limit_i], |r| {
+            let filepath: String = r.get(0)?;
+            let title: String = r.get(1)?;
+            let hash: String = r.get(2)?;
+            let body: String = r.get(3)?;
+            let sc: f64 = r.get(4)?;
+            let score = (sc.abs() / (1.0 + sc.abs())) as f32;
+            let docid = if hash.len() >= 6 {
+                format!("#{}", &hash[0..6])
+            } else {
+                format!("#{}", hash)
+            };
+            let snippet: String = body.chars().take(220).collect();
+            Ok(FtsHit {
+                file: filepath,
+                docid,
                 title,
-                score: (1.0 - (score as f32 / 100.0)).clamp(0.0, 1.0),
+                score,
                 snippet,
-            });
-        }
+            })
+        })?;
+        let rows: Vec<FtsHit> = rows_iter.filter_map(|x| x.ok()).collect();
+        Ok(rows)
     }
-
-    Ok(hits)
 }

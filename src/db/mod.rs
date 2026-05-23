@@ -21,7 +21,9 @@ pub struct CollectionCfg {
     pub pattern: String,
 }
 
-fn default_pattern() -> String { "**/*.md".to_string() }
+fn default_pattern() -> String {
+    "**/*.md".to_string()
+}
 
 #[derive(Debug, Deserialize, Default)]
 pub struct ModelsCfg {
@@ -44,8 +46,8 @@ pub fn load_config() -> Result<QmdConfig> {
     if !path.exists() {
         return Ok(QmdConfig::default());
     }
-    let text = fs::read_to_string(&path)
-        .with_context(|| format!("failed to read {}", path.display()))?;
+    let text =
+        fs::read_to_string(&path).with_context(|| format!("failed to read {}", path.display()))?;
     serde_yaml::from_str(&text)
         .with_context(|| format!("failed to parse YAML at {}", path.display()))
 }
@@ -68,21 +70,35 @@ pub fn open_connection(read_only: bool) -> Result<Connection> {
 
 pub fn db_counts(db_path: &str) -> Option<(u32, u32)> {
     let expanded = expand_tilde(db_path);
-    let conn = Connection::open_with_flags(&expanded, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY).ok()?;
-    let doc: u32 = conn.query_row("SELECT COUNT(*) FROM documents WHERE active=1", [], |r| r.get(0)).unwrap_or(0);
-    let vec: u32 = conn.query_row("SELECT COUNT(*) FROM content_vectors", [], |r| r.get(0)).unwrap_or(0);
+    let conn =
+        Connection::open_with_flags(&expanded, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY).ok()?;
+    let doc: u32 = conn
+        .query_row("SELECT COUNT(*) FROM documents WHERE active=1", [], |r| {
+            r.get(0)
+        })
+        .unwrap_or(0);
+    let vec: u32 = conn
+        .query_row("SELECT COUNT(*) FROM content_vectors", [], |r| r.get(0))
+        .unwrap_or(0);
     Some((doc, vec))
 }
 
 pub fn last_updated_hint(db_path: &str) -> Option<String> {
     let expanded = expand_tilde(db_path);
-    let conn = Connection::open_with_flags(&expanded, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY).ok()?;
-    let ts: String = conn.query_row(
-        "SELECT COALESCE(MAX(modified_at), '') FROM documents WHERE active=1",
-        [],
-        |r| r.get(0),
-    ).unwrap_or_default();
-    if ts.is_empty() { None } else { Some(ts) }
+    let conn =
+        Connection::open_with_flags(&expanded, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY).ok()?;
+    let ts: String = conn
+        .query_row(
+            "SELECT COALESCE(MAX(modified_at), '') FROM documents WHERE active=1",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap_or_default();
+    if ts.is_empty() {
+        None
+    } else {
+        Some(ts)
+    }
 }
 
 pub fn get_collection_stats(name: &str) -> (u32, String) {
@@ -111,7 +127,12 @@ pub fn load_config_value() -> Result<serde_yaml::Value> {
 
 pub fn save_config_value(v: &serde_yaml::Value) -> Result<()> {
     let path = PathBuf::from(expand_tilde("~/.config/qmd/index.yml"));
-    if let Some(d) = path.parent() { let _ = fs::create_dir_all(d); }
+    if let Some(d) = path.parent() {
+        let _ = fs::create_dir_all(d);
+    }
     fs::write(&path, serde_yaml::to_string(v)?)?;
     Ok(())
 }
+
+pub mod search;
+pub use search::{build_fts5_query, fts_search, FtsHit};

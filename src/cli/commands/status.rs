@@ -1,7 +1,7 @@
 //! Implementation of the `qmd status` command.
 
+use crate::db::{db_counts, expand_tilde, last_updated_hint, load_config};
 use anyhow::Result;
-use crate::db::{load_config, db_counts, last_updated_hint, expand_tilde};
 
 const INDEX_PATH: &str = "~/.cache/qmd/index.sqlite";
 const CONFIG_DIR: &str = "~/.config/qmd";

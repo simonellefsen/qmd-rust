@@ -88,3 +88,15 @@ src/
 **Rule of thumb for contributors**: New logic should go into the appropriate module under `src/`, not be appended to `main.rs`.
 
 See `src/lib.rs` and the subdirectories for the current state of the refactor.
+
+## Refactor Progress (as of this session)
+
+- CLI args fully extracted to `src/cli/args.rs`
+- DB layer (`src/db/mod.rs`) owns config + connection + collection stats helpers
+- Search/FTS5 logic moved to `src/db/search.rs` (all sanitizers, `build_fts5_query`, `fts_search`)
+- First command implementation moved: `cmd_status` → `src/cli/commands/status.rs`
+- `src/lib.rs` + module re-exports in place for clean `use qmd::...` from main.rs
+
+The goal is a thin `main.rs` that only does argument parsing and dispatch.
+
+**Major win this session**: The entire FTS5/BM25 search engine (all sanitizers, CJK handling, `build_fts5_query`, `fts_search` with collection CTE) has been extracted into `src/db/search.rs`. `cmd_search` now delegates to it cleanly. The monolithic file is shrinking fast.

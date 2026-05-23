@@ -176,9 +176,16 @@ pub enum CollectionAction {
         mask: Option<String>,
     },
     List,
-    Remove { name: String },
-    Rename { old: String, new: String },
-    Show { name: String },
+    Remove {
+        name: String,
+    },
+    Rename {
+        old: String,
+        new: String,
+    },
+    Show {
+        name: String,
+    },
 }
 
 #[derive(Subcommand, Debug, Clone)]
@@ -188,7 +195,9 @@ pub enum ContextAction {
         text: Vec<String>,
     },
     List,
-    Rm { path: String },
+    Rm {
+        path: String,
+    },
     Check,
 }
 

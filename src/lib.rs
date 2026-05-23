@@ -11,7 +11,8 @@ pub mod db;
 
 pub use cli::args::{Cli, Commands, OutputFormat};
 pub use db::{
-    QmdConfig, CollectionCfg, ModelsCfg,
-    load_config, db_counts, last_updated_hint, expand_tilde,
-    open_connection, get_collection_stats, load_config_value, save_config_value,
+    db_counts, expand_tilde, get_collection_stats, last_updated_hint, load_config,
+    load_config_value, open_connection, save_config_value,
+    search::{build_fts5_query, fts_search, FtsHit},
+    CollectionCfg, ModelsCfg, QmdConfig,
 };
