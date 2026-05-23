@@ -1,11 +1,18 @@
 [package]
 name = "qmd"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 description = "Query Markup Documents - secure Rust port of the on-device hybrid search engine"
 license = "MIT"
 repository = "https://github.com/simonellefsen/qmd-rust"
+homepage = "https://github.com/simonellefsen/qmd-rust"
 authors = ["QMD contributors (Rust port)"]
+
+[package.metadata.wix]
+upgrade-guid = "72157046-B8D8-4576-BF9A-F625877CEDE8"
+path-guid = "BE863F5F-C026-46FC-A18D-7DBD10BBFC5D"
+license = false
+eula = false
 
 [[bin]]
 name = "qmd"

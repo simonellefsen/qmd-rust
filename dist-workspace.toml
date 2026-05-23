@@ -1,41 +1,37 @@
 [workspace]
-members = ["."]
+members = ["cargo:."]
 
-# The preferred cargo-dist version to use in CI (Cargo.toml SemVer syntax)
-cargo-dist-version = "0.28.0"
-
+# Config for 'dist'
+[dist]
+# The preferred dist version to use in CI (Cargo.toml SemVer syntax)
+cargo-dist-version = "0.32.0"
 # CI backends to support
-ci = ["github"]
-
+ci = "github"
 # The installers to generate for each app
-installers = ["shell", "homebrew", "msi", "powershell"]
-
+installers = ["shell", "powershell", "homebrew", "msi"]
+# A GitHub repo to push Homebrew formulas to
+tap = "simonellefsen/homebrew-qmd"
+# Customize the Homebrew formula name
+formula = "qmd"
 # Target platforms to build apps for (Rust target-triple syntax)
-targets = [
-  "aarch64-apple-darwin",
-  "x86_64-apple-darwin",
-  "x86_64-unknown-linux-gnu",
-  "x86_64-unknown-linux-musl",
-  "x86_64-pc-windows-msvc",
-]
-
+targets = ["aarch64-apple-darwin", "x86_64-apple-darwin", "x86_64-unknown-linux-gnu", "x86_64-unknown-linux-musl", "x86_64-pc-windows-msvc"]
 # Publish jobs to run in CI
-publish-jobs = ["./publish-crates"]
-
-# Which actions to run on which platforms
+publish-jobs = ["homebrew"]
+# Which actions to run on pull requests
 pr-run-mode = "plan"
 
 # Whether to install dependencies needed to build.
 enable-cargo-install = true
-
-# The archive format to use for non-windows builds (defaults to ".tar.xz")
+# The archive format to use for non-windows builds (defaults .tar.xz)
 unix-archive = ".tar.xz"
-
-# The archive format to use for windows builds (defaults to ".zip")
+# The archive format to use for windows builds (defaults .zip)
 windows-archive = ".zip"
-
-# Whether to auto-include files like READMEs, LICENSE, etc.
+# Whether to auto-include files like READMEs, LICENSEs, and CHANGELOGs (default true)
 auto-includes = true
+# Path that installers should place binaries in
+install-path = "CARGO_HOME"
+# Whether to install an updater program
+install-updater = false
 
 # Whether to sign the binaries with a cosign key (requires setting up cosign)
 # signing = "cosign"
