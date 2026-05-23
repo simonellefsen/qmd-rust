@@ -30,9 +30,10 @@
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 use rusqlite::Connection;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::env;
 use std::fs;
+use std::io::{self, BufRead, BufReader, Write};
 use std::path::PathBuf;
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -129,6 +130,12 @@ enum Commands {
         format: OutputFormat,
         #[arg(short = 'c', long)]
         collection: Option<String>,
+        /// Output as JSON (shorthand, matches original qmd CLI)
+        #[arg(long)]
+        json: bool,
+        /// Output file list only (shorthand)
+        #[arg(long)]
+        files: bool,
     },
 
     /// Vector similarity search only
@@ -339,6 +346,40 @@ fn main() -> Result<()> {
             }
         }
 
+        Some(Commands::Collection { action }) => {
+            cmd_collection(action)?;
+        }
+
+        Some(Commands::Ls { path }) => {
+            cmd_ls(path)?;
+        }
+
+        Some(Commands::Get {
+            file,
+            l,
+            full,
+            line_numbers,
+        }) => {
+            cmd_get(file, l, full, line_numbers)?;
+        }
+
+        Some(Commands::Search {
+            query,
+            n,
+            all,
+            min_score,
+            format,
+            collection,
+            json,
+            files,
+        }) => {
+            cmd_search(query, n, all, min_score, format, collection, json, files)?;
+        }
+
+        Some(Commands::Mcp { http, port, daemon }) => {
+            cmd_mcp(http, port, daemon)?;
+        }
+
         // This arm catches every command we have *declared* in the enum but have
         // not finished porting yet. The `..` means "I don't care about the fields".
         //
@@ -346,15 +387,10 @@ fn main() -> Result<()> {
         // "please use the mature Node version for this operation for now".
         // Once a command is implemented, you move its arm *above* this catch-all.
         Some(Commands::Query { .. })
-        | Some(Commands::Search { .. })
         | Some(Commands::Vsearch { .. })
-        | Some(Commands::Get { .. })
         | Some(Commands::MultiGet { .. })
-        | Some(Commands::Ls { .. })
         | Some(Commands::Update { .. })
         | Some(Commands::Embed { .. })
-        | Some(Commands::Mcp { .. })
-        | Some(Commands::Collection { .. })
         | Some(Commands::Context { .. })
         | Some(Commands::Bench { .. })
         | Some(Commands::Skills { .. }) => {
@@ -604,4 +640,1041 @@ fn last_updated_hint(db_path: &str) -> Option<String> {
     } else {
         Some(ts)
     }
+}
+
+// =============================================================================
+// Core command implementations for daily llm-wiki use (collection, ls, get, search, mcp, enhanced status helpers)
+// All logic kept in main.rs per task constraints. Follows rusqlite + anyhow + existing patterns exactly.
+// FTS5 query builder ported manually (no new deps).
+// =============================================================================
+
+fn open_connection(read_only: bool) -> Result<Connection> {
+    let expanded = expand_tilde(INDEX_PATH);
+    if !read_only {
+        if let Some(parent) = std::path::Path::new(&expanded).parent() {
+            let _ = fs::create_dir_all(parent);
+        }
+    }
+    let flags = if read_only {
+        rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY
+    } else {
+        rusqlite::OpenFlags::SQLITE_OPEN_READ_WRITE | rusqlite::OpenFlags::SQLITE_OPEN_CREATE
+    };
+    Connection::open_with_flags(&expanded, flags)
+        .with_context(|| format!("failed to open DB at {}", expanded))
+}
+
+fn get_collection_stats(name: &str) -> (u32, String) {
+    if let Ok(conn) = open_connection(true) {
+        if let Ok((cnt, last)) = conn.query_row(
+            "SELECT COUNT(*) , COALESCE(MAX(modified_at), '') FROM documents WHERE collection = ? AND active = 1",
+            [name],
+            |r| Ok((r.get::<_, u32>(0).unwrap_or(0), r.get::<_, String>(1).unwrap_or_default())),
+        ) {
+            return (cnt, last);
+        }
+    }
+    (0, "unknown".to_string())
+}
+
+// --- YAML Value roundtrip for collection mgmt (preserves extra keys like global_context, per-coll context) ---
+
+fn load_config_value() -> Result<serde_yaml::Value> {
+    let path = PathBuf::from(expand_tilde("~/.config/qmd/index.yml"));
+    if !path.exists() {
+        let mut root = serde_yaml::Mapping::new();
+        root.insert(
+            serde_yaml::Value::String("collections".into()),
+            serde_yaml::Value::Mapping(serde_yaml::Mapping::new()),
+        );
+        return Ok(serde_yaml::Value::Mapping(root));
+    }
+    let text =
+        fs::read_to_string(&path).with_context(|| format!("failed to read {}", path.display()))?;
+    let v: serde_yaml::Value = serde_yaml::from_str(&text)
+        .with_context(|| format!("failed to parse YAML at {}", path.display()))?;
+    Ok(v)
+}
+
+fn save_config_value(v: &serde_yaml::Value) -> Result<()> {
+    let path = PathBuf::from(expand_tilde("~/.config/qmd/index.yml"));
+    if let Some(dir) = path.parent() {
+        let _ = fs::create_dir_all(dir);
+    }
+    let text = serde_yaml::to_string(v).context("failed to serialize config to YAML")?;
+    fs::write(&path, text).with_context(|| format!("failed to write {}", path.display()))?;
+    Ok(())
+}
+
+// --- Collection commands (full parity for YAML + store_collections + basic DB cleanup) ---
+
+fn cmd_collection(action: CollectionAction) -> Result<()> {
+    match action {
+        CollectionAction::List => {
+            let cfg = load_config().unwrap_or_default();
+            let cols = cfg.collections.unwrap_or_default();
+            if cols.is_empty() {
+                println!("No collections found. Run 'qmd collection add <path>' to create one.");
+                return Ok(());
+            }
+            println!("Collections ({}):", cols.len());
+            println!();
+            for (name, c) in &cols {
+                let (fcount, last) = get_collection_stats(name);
+                println!("{} (qmd://{}/)", name, name);
+                println!("  Pattern:  {}", c.pattern);
+                println!("  Files:    {}", fcount);
+                println!("  Path:     {}", c.path);
+                if !last.is_empty() && last != "unknown" {
+                    println!("  Updated:  {}", last);
+                }
+                println!();
+            }
+        }
+        CollectionAction::Add { path, name, mask } => {
+            let p = path.to_string_lossy().to_string();
+            let resolved = if p == "." {
+                env::current_dir()?.to_string_lossy().to_string()
+            } else {
+                p
+            };
+            let coll_name = name.unwrap_or_else(|| {
+                std::path::Path::new(&resolved)
+                    .file_name()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or("root")
+                    .to_string()
+            });
+            let pattern = mask.unwrap_or_else(|| "**/*.md".to_string());
+
+            let mut v = load_config_value()?;
+            {
+                let root_map = match v.as_mapping_mut() {
+                    Some(m) => m,
+                    None => {
+                        eprintln!(
+                            "invalid config root in ~/.config/qmd/index.yml (expected mapping)"
+                        );
+                        std::process::exit(1);
+                    }
+                };
+                let cols_val = root_map
+                    .entry(serde_yaml::Value::String("collections".into()))
+                    .or_insert(serde_yaml::Value::Mapping(serde_yaml::Mapping::new()));
+                if let Some(m) = cols_val.as_mapping_mut() {
+                    let key = serde_yaml::Value::String(coll_name.clone());
+                    if m.contains_key(&key) {
+                        eprintln!("Collection '{}' already exists.", coll_name);
+                        std::process::exit(1);
+                    }
+                    let mut entry = serde_yaml::Mapping::new();
+                    entry.insert(
+                        serde_yaml::Value::String("path".into()),
+                        serde_yaml::Value::String(resolved.clone()),
+                    );
+                    entry.insert(
+                        serde_yaml::Value::String("pattern".into()),
+                        serde_yaml::Value::String(pattern.clone()),
+                    );
+                    m.insert(key, serde_yaml::Value::Mapping(entry));
+                }
+            }
+            eprintln!("Warning: collection mutation rewrites YAML and strips comments (use /opt/homebrew/bin/qmd for comment-preserving edits).");
+            save_config_value(&v)?;
+
+            // keep store_collections in sync (no full index, just metadata)
+            if let Ok(conn) = open_connection(false) {
+                let _ = conn.execute(
+                    "INSERT OR REPLACE INTO store_collections(name, path, pattern) VALUES(?, ?, ?)",
+                    rusqlite::params![&coll_name, &resolved, &pattern],
+                );
+            }
+
+            println!("✓ Collection '{}' added (qmd://{}/)", coll_name, coll_name);
+            println!("  Path: {}", resolved);
+            println!("  Pattern: {}", pattern);
+            println!("  Note: files not indexed yet. Use /opt/homebrew/bin/qmd update (or Node collection add) for indexing.");
+        }
+        CollectionAction::Remove { name } => {
+            let mut v = load_config_value()?;
+            let existed = if let Some(cols) = v
+                .as_mapping_mut()
+                .and_then(|m| m.get_mut("collections"))
+                .and_then(|c| c.as_mapping_mut())
+            {
+                cols.remove(serde_yaml::Value::String(name.clone()))
+                    .is_some()
+            } else {
+                false
+            };
+            if !existed {
+                eprintln!("Collection not found: {}", name);
+                std::process::exit(1);
+            }
+            eprintln!("Warning: collection mutation rewrites YAML and strips comments (use /opt/homebrew/bin/qmd for comment-preserving edits).");
+            save_config_value(&v)?;
+
+            let deact = if let Ok(conn) = open_connection(false) {
+                let d = conn
+                    .execute(
+                        "UPDATE documents SET active=0 WHERE collection = ? AND active=1",
+                        [&name],
+                    )
+                    .unwrap_or(0) as u32;
+                let _ = conn.execute("DELETE FROM store_collections WHERE name = ?", [&name]);
+                d
+            } else {
+                0
+            };
+            println!("✓ Removed collection '{}'", name);
+            println!(
+                "  Deactivated {} documents (DB). Run Node cleanup if needed.",
+                deact
+            );
+        }
+        CollectionAction::Rename { old, new } => {
+            let mut v = load_config_value()?;
+            let ok = if let Some(cols) = v
+                .as_mapping_mut()
+                .and_then(|m| m.get_mut("collections"))
+                .and_then(|c| c.as_mapping_mut())
+            {
+                if cols.contains_key(serde_yaml::Value::String(new.clone())) {
+                    eprintln!("Target collection '{}' already exists.", new);
+                    std::process::exit(1);
+                }
+                if let Some(entry) = cols.remove(serde_yaml::Value::String(old.clone())) {
+                    cols.insert(serde_yaml::Value::String(new.clone()), entry);
+                    true
+                } else {
+                    false
+                }
+            } else {
+                false
+            };
+            if !ok {
+                eprintln!("Collection not found: {}", old);
+                std::process::exit(1);
+            }
+            eprintln!("Warning: collection mutation rewrites YAML and strips comments (use /opt/homebrew/bin/qmd for comment-preserving edits).");
+            save_config_value(&v)?;
+
+            if let Ok(conn) = open_connection(false) {
+                let _ = conn.execute(
+                    "UPDATE store_collections SET name = ? WHERE name = ?",
+                    [&new, &old],
+                );
+                let _ = conn.execute(
+                    "UPDATE documents SET collection = ? WHERE collection = ?",
+                    [&new, &old],
+                );
+            }
+            println!("✓ Renamed '{}' -> '{}'", old, new);
+        }
+        CollectionAction::Show { name } => {
+            let cfg = load_config().unwrap_or_default();
+            let cols = cfg.collections.unwrap_or_default();
+            if let Some(c) = cols.get(&name) {
+                let (fcount, last) = get_collection_stats(&name);
+                println!("Collection: {}", name);
+                println!("  Path:     {}", c.path);
+                println!("  Pattern:  {}", c.pattern);
+                println!("  Files:    {}", fcount);
+                println!("  Updated:  {}", last);
+                return Ok(());
+            }
+            eprintln!("Collection not found: {}", name);
+            std::process::exit(1);
+        }
+    }
+    Ok(())
+}
+
+// --- ls [collection[/path]] or qmd:// ---
+
+fn parse_qmd_virtual(p: &str) -> Option<(String, String)> {
+    let s = p
+        .trim_start_matches("qmd:")
+        .trim_start_matches('/')
+        .trim_start_matches('/');
+    if s.is_empty() {
+        return None;
+    }
+    let mut it = s.splitn(2, '/');
+    let coll = it.next()?.to_string();
+    let rest = it.next().unwrap_or("").to_string();
+    if coll.is_empty() {
+        return None;
+    }
+    Some((coll, rest))
+}
+
+/// Escape SQL LIKE wildcards so user paths containing % or _ do not over-match (addresses latent bug in prefix/suffix queries).
+fn escape_like(p: &str) -> String {
+    p.replace('%', "\\%").replace('_', "\\_")
+}
+
+fn cmd_ls(path: Option<String>) -> Result<()> {
+    if path.as_deref().unwrap_or("").trim().is_empty() {
+        let cfg = load_config().unwrap_or_default();
+        let cols = cfg.collections.unwrap_or_default();
+        if cols.is_empty() {
+            println!("No collections. Run 'qmd collection add .' ");
+            return Ok(());
+        }
+        println!("Collections:");
+        for name in cols.keys() {
+            let cnt = if let Ok(conn) = open_connection(true) {
+                conn.query_row(
+                    "SELECT COUNT(*) FROM documents WHERE collection=? AND active=1",
+                    [name],
+                    |r| r.get::<_, u32>(0),
+                )
+                .unwrap_or(0)
+            } else {
+                0
+            };
+            println!("  qmd://{}/  ({} files)", name, cnt);
+        }
+        return Ok(());
+    }
+
+    let p = path.unwrap();
+    let (coll_name, prefix_opt) = if let Some((c, r)) = parse_qmd_virtual(&p) {
+        (c, if r.is_empty() { None } else { Some(r) })
+    } else if p.contains('/') && !p.starts_with('/') && !p.starts_with('~') {
+        let mut it = p.splitn(2, '/');
+        (
+            it.next().unwrap_or("").to_string(),
+            it.next().map(|s| s.to_string()),
+        )
+    } else {
+        (p, None)
+    };
+
+    if coll_name.is_empty() {
+        println!("Invalid path for ls");
+        return Ok(());
+    }
+
+    let like = prefix_opt
+        .as_ref()
+        .map(|pr| format!("{}%", escape_like(pr)))
+        .unwrap_or_else(|| "%".to_string());
+
+    let mut files: Vec<String> = Vec::new();
+    if let Ok(conn) = open_connection(true) {
+        if prefix_opt.is_some() {
+            let sql = "SELECT path FROM documents WHERE collection = ? AND path LIKE ? ESCAPE '\\' AND active=1 ORDER BY path";
+            let mut stmt = conn.prepare(sql)?;
+            let rows = stmt.query_map([&coll_name, &like], |r| r.get::<_, String>(0))?;
+            for fp in rows.flatten() {
+                files.push(fp);
+            }
+        } else {
+            let sql = "SELECT path FROM documents WHERE collection = ? AND active=1 ORDER BY path";
+            let mut stmt = conn.prepare(sql)?;
+            let rows = stmt.query_map([&coll_name], |r| r.get::<_, String>(0))?;
+            for fp in rows.flatten() {
+                files.push(fp);
+            }
+        }
+    }
+
+    if files.is_empty() {
+        println!(
+            "No files under qmd://{}/{}",
+            coll_name,
+            prefix_opt.unwrap_or_default()
+        );
+    } else {
+        println!("qmd://{}/ :", coll_name);
+        for f in files {
+            println!("  {}", f);
+        }
+    }
+    Ok(())
+}
+
+// --- get <path or #docid> [-l N] [--full] [--line-numbers] (DB + disk fallback) ---
+
+fn get_body_from_db(target: &str) -> Option<String> {
+    let conn = open_connection(true).ok()?;
+    // qmd:// or virtual
+    if let Some((coll, pth)) = parse_qmd_virtual(target) {
+        if let Ok(b) = conn.query_row(
+            "SELECT doc FROM content JOIN documents d ON d.hash=content.hash WHERE d.collection=? AND d.path=? AND d.active=1",
+            [&coll, &pth],
+            |r| r.get(0),
+        ) {
+            return Some(b);
+        }
+        if let Ok(b) = conn.query_row(
+            "SELECT doc FROM content JOIN documents d ON d.hash=content.hash WHERE d.collection=? AND d.path LIKE ? ESCAPE '\\' AND d.active=1 LIMIT 1",
+            [&coll, &format!("%{}", escape_like(&pth))],
+            |r| r.get(0),
+        ) {
+            return Some(b);
+        }
+    }
+    // bare collection/path form
+    if !target.starts_with('/') && !target.starts_with('~') && target.contains('/') {
+        let mut it = target.splitn(2, '/');
+        if let (Some(coll), Some(pth)) = (it.next(), it.next()) {
+            if let Ok(b) = conn.query_row(
+                "SELECT doc FROM content JOIN documents d ON d.hash=content.hash WHERE d.collection=? AND d.path=? AND d.active=1",
+                [coll, pth],
+                |r| r.get(0),
+            ) {
+                return Some(b);
+            }
+            if let Ok(b) = conn.query_row(
+                "SELECT doc FROM content JOIN documents d ON d.hash=content.hash WHERE d.collection=? AND d.path LIKE ? ESCAPE '\\' AND d.active=1 LIMIT 1",
+                [coll, &format!("%{}", escape_like(pth))],
+                |r| r.get(0),
+            ) {
+                return Some(b);
+            }
+        }
+    }
+    None
+}
+
+fn cmd_get(file: String, l: Option<usize>, full: bool, line_numbers: bool) -> Result<()> {
+    let mut input = file.clone();
+    let mut start_line: usize = 1;
+    if let Some(pos) = input.rfind(':') {
+        if let Ok(n) = input[pos + 1..].parse::<usize>() {
+            if n > 0 {
+                start_line = n;
+                input = input[..pos].to_string();
+            }
+        }
+    }
+
+    let max_lines = if full { None } else { l };
+
+    // docid fast path (# or short hex 3-8 chars): docid lookup has precedence over FS path of same name (rare hex collision; documented per review).
+    // Matches TS isDocid + findDocumentByDocid priority.
+    let body = if input.starts_with('#')
+        || (input.len() <= 8 && input.chars().all(|c| c.is_ascii_hexdigit()))
+    {
+        if let Ok(conn) = open_connection(true) {
+            let short = input.trim_start_matches('#');
+            conn.query_row(
+                "SELECT (SELECT doc FROM content WHERE hash = d.hash) FROM documents d WHERE d.hash LIKE ? AND d.active=1 LIMIT 1",
+                [format!("{}%", short)],
+                |r| r.get::<_, String>(0),
+            ).ok()
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+
+    let body = if let Some(b) = body {
+        b
+    } else if let Some(b) = get_body_from_db(&input) {
+        b
+    } else {
+        // disk fallback for any path (makes get universally useful)
+        let fs_path = if let Some(stripped) = input.strip_prefix("~/") {
+            if let Some(home) = env::var_os("HOME") {
+                format!("{}/{}", home.to_string_lossy(), stripped)
+            } else {
+                input.clone()
+            }
+        } else if !input.starts_with('/') && !input.starts_with('~') {
+            let cwd = env::current_dir()
+                .map(|p| p.to_string_lossy().to_string())
+                .unwrap_or_default();
+            if cwd.is_empty() {
+                input.clone()
+            } else {
+                format!("{}/{}", cwd, input)
+            }
+        } else {
+            input.clone()
+        };
+        match fs::read_to_string(&fs_path) {
+            Ok(s) => {
+                println!("(read from disk: {})", fs_path);
+                s
+            }
+            Err(_) => {
+                eprintln!("Document not found: {}", file);
+                std::process::exit(1);
+            }
+        }
+    };
+
+    let all_lines: Vec<&str> = body.lines().collect();
+    let mut start_idx = start_line.saturating_sub(1);
+    let mut end_idx = if let Some(ml) = max_lines {
+        (start_idx + ml).min(all_lines.len())
+    } else {
+        all_lines.len()
+    };
+    if start_idx > all_lines.len() {
+        start_idx = all_lines.len();
+    }
+    if end_idx < start_idx {
+        end_idx = start_idx;
+    }
+    end_idx = end_idx.min(all_lines.len());
+    let selected = &all_lines[start_idx..end_idx];
+
+    let output = if line_numbers {
+        selected
+            .iter()
+            .enumerate()
+            .map(|(i, ln)| format!("{}: {}", start_line + i, ln))
+            .collect::<Vec<_>>()
+            .join("\n")
+    } else {
+        selected.join("\n")
+    };
+
+    println!("{}", output);
+    Ok(())
+}
+
+// --- search <query> : basic BM25 via FTS5 (with full lex syntax support) ---
+
+#[derive(Serialize, Debug)]
+struct FtsHit {
+    file: String,
+    docid: String,
+    title: String,
+    score: f32,
+    snippet: String,
+}
+
+fn is_cjk_char(c: char) -> bool {
+    let cp = c as u32;
+    (0x4E00..=0x9FFF).contains(&cp)
+        || (0x3040..=0x309F).contains(&cp)
+        || (0x30A0..=0x30FF).contains(&cp)
+        || (0xAC00..=0xD7AF).contains(&cp)
+        || (0x1100..=0x11FF).contains(&cp)
+        || (0x3130..=0x318F).contains(&cp)
+}
+
+fn contains_cjk(text: &str) -> bool {
+    text.chars().any(is_cjk_char)
+}
+
+fn normalize_cjk_for_fts(text: &str) -> String {
+    let mut out = String::new();
+    let cs: Vec<char> = text.chars().collect();
+    let mut i = 0;
+    while i < cs.len() {
+        if is_cjk_char(cs[i]) {
+            out.push(' ');
+            while i < cs.len() && is_cjk_char(cs[i]) {
+                out.push(cs[i]);
+                out.push(' ');
+                i += 1;
+            }
+            out.push(' ');
+        } else {
+            out.push(cs[i]);
+            i += 1;
+        }
+    }
+    out
+}
+
+fn sanitize_fts5_term(term: &str) -> String {
+    term.chars()
+        .filter(|c| c.is_alphanumeric() || *c == '\'' || *c == '_')
+        .collect::<String>()
+        .to_lowercase()
+}
+
+fn is_hyphenated_token(term: &str) -> bool {
+    if !term.contains('-') || term.starts_with('-') || term.ends_with('-') {
+        return false;
+    }
+    // Replicate TS regex ^[\p{L}\p{N}][\p{L}\p{N}'-]*-[\p{L}\p{N}][\p{L}\p{N}'-]*$ semantics:
+    // at least two alnum/' groups separated by (one or more) internal -
+    // Use .all() (not .any()) for strict per-part charset match to reject junk punctuation inside groups.
+    let parts: Vec<&str> = term.split('-').collect();
+    let alnum_parts = parts
+        .iter()
+        .filter(|p| !p.is_empty() && p.chars().all(|c| c.is_alphanumeric() || c == '\''))
+        .count();
+    alnum_parts >= 2
+}
+
+fn sanitize_hyphenated_term(term: &str) -> String {
+    term.split('-')
+        .map(sanitize_fts5_term)
+        .filter(|t| !t.is_empty())
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn sanitize_fts5_phrase(phrase: &str) -> String {
+    normalize_cjk_for_fts(phrase)
+        .split_whitespace()
+        .map(sanitize_fts5_term)
+        .filter(|t| !t.is_empty())
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn build_fts5_query(query: &str) -> Option<String> {
+    let mut positive: Vec<String> = Vec::new();
+    let mut negative: Vec<String> = Vec::new();
+    let s = query.trim();
+    let cs: Vec<char> = s.chars().collect();
+    let mut i = 0;
+    while i < cs.len() {
+        while i < cs.len() && cs[i].is_whitespace() {
+            i += 1;
+        }
+        if i >= cs.len() {
+            break;
+        }
+        let negated = cs[i] == '-';
+        if negated {
+            i += 1;
+        }
+        if i >= cs.len() {
+            break;
+        }
+        if cs[i] == '"' {
+            i += 1;
+            let start = i;
+            while i < cs.len() && cs[i] != '"' {
+                i += 1;
+            }
+            let phrase: String = cs[start..i].iter().collect();
+            if i < cs.len() {
+                i += 1;
+            }
+            let sanitized = sanitize_fts5_phrase(&phrase);
+            if !sanitized.is_empty() {
+                let fts = format!("\"{}\"", sanitized);
+                if negated {
+                    negative.push(fts);
+                } else {
+                    positive.push(fts);
+                }
+            }
+        } else {
+            let start = i;
+            while i < cs.len() && !(cs[i].is_whitespace() || cs[i] == '"') {
+                i += 1;
+            }
+            let term: String = cs[start..i].iter().collect();
+            if is_hyphenated_token(&term) {
+                let sanitized = sanitize_hyphenated_term(&term);
+                if !sanitized.is_empty() {
+                    let fts = format!("\"{}\"", sanitized);
+                    if negated {
+                        negative.push(fts);
+                    } else {
+                        positive.push(fts);
+                    }
+                }
+            } else if contains_cjk(&term) {
+                let sanitized = sanitize_fts5_phrase(&term);
+                if !sanitized.is_empty() {
+                    let fts = format!("\"{}\"", sanitized);
+                    if negated {
+                        negative.push(fts);
+                    } else {
+                        positive.push(fts);
+                    }
+                }
+            } else {
+                let sanitized = sanitize_fts5_term(&term);
+                if !sanitized.is_empty() {
+                    let fts = format!("\"{}\"*", sanitized);
+                    if negated {
+                        negative.push(fts);
+                    } else {
+                        positive.push(fts);
+                    }
+                }
+            }
+        }
+    }
+    if positive.is_empty() {
+        return None;
+    }
+    let mut res = positive.join(" AND ");
+    for neg in negative {
+        res = format!("{} NOT {}", res, neg);
+    }
+    Some(res)
+}
+
+fn fts_search(query: &str, limit: usize, collection: Option<&str>) -> Result<Vec<FtsHit>> {
+    let fts_q = match build_fts5_query(query) {
+        Some(q) => q,
+        None => return Ok(vec![]),
+    };
+    let conn = open_connection(true)?;
+    let limit_i = limit as i64;
+    if let Some(c) = collection {
+        // Use CTE to force FTS5 first (per store.ts:3396 comment to avoid planner abandoning index on collection filter); prefetch 10x then limit
+        let fts_limit = (limit * 10) as i64;
+        let sql = r#"
+            WITH fts_matches AS (
+              SELECT rowid, bm25(documents_fts, 1.5, 4.0, 1.0) as sc
+              FROM documents_fts
+              WHERE documents_fts MATCH ?
+              ORDER BY sc ASC
+              LIMIT ?
+            )
+            SELECT
+              'qmd://' || d.collection || '/' || d.path as filepath,
+              d.title, d.hash, content.doc as body, fm.sc
+            FROM fts_matches fm
+            JOIN documents d ON d.id = fm.rowid
+            JOIN content ON content.hash = d.hash
+            WHERE d.active = 1 AND d.collection = ?
+            ORDER BY fm.sc ASC LIMIT ?
+        "#;
+        let mut stmt = conn.prepare(sql)?;
+        let rows_iter = stmt.query_map(rusqlite::params![fts_q, fts_limit, c, limit_i], |r| {
+            let filepath: String = r.get(0)?;
+            let title: String = r.get(1)?;
+            let hash: String = r.get(2)?;
+            let body: String = r.get(3)?;
+            let sc: f64 = r.get(4)?;
+            let score = (sc.abs() / (1.0 + sc.abs())) as f32;
+            let docid = if hash.len() >= 6 {
+                format!("#{}", &hash[0..6])
+            } else {
+                format!("#{}", hash)
+            };
+            let snippet: String = body.chars().take(220).collect();
+            Ok(FtsHit {
+                file: filepath,
+                docid,
+                title,
+                score,
+                snippet,
+            })
+        })?;
+        let rows: Vec<FtsHit> = rows_iter.filter_map(|x| x.ok()).collect();
+        Ok(rows)
+    } else {
+        let sql = "SELECT 'qmd://' || d.collection || '/' || d.path as filepath, d.title, d.hash, content.doc as body, bm25(documents_fts, 1.5, 4.0, 1.0) as sc FROM documents_fts JOIN documents d ON d.id = documents_fts.rowid JOIN content ON content.hash = d.hash WHERE documents_fts MATCH ? AND d.active = 1 ORDER BY sc ASC LIMIT ?";
+        let mut stmt = conn.prepare(sql)?;
+        let rows_iter = stmt.query_map(rusqlite::params![fts_q, limit_i], |r| {
+            let filepath: String = r.get(0)?;
+            let title: String = r.get(1)?;
+            let hash: String = r.get(2)?;
+            let body: String = r.get(3)?;
+            let sc: f64 = r.get(4)?;
+            let score = (sc.abs() / (1.0 + sc.abs())) as f32;
+            let docid = if hash.len() >= 6 {
+                format!("#{}", &hash[0..6])
+            } else {
+                format!("#{}", hash)
+            };
+            let snippet: String = body.chars().take(220).collect();
+            Ok(FtsHit {
+                file: filepath,
+                docid,
+                title,
+                score,
+                snippet,
+            })
+        })?;
+        let rows: Vec<FtsHit> = rows_iter.filter_map(|x| x.ok()).collect();
+        Ok(rows)
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn cmd_search(
+    query: Vec<String>,
+    n: usize,
+    all: bool,
+    min_score: Option<f32>,
+    format: OutputFormat,
+    collection: Option<String>,
+    json: bool,
+    files: bool,
+) -> Result<()> {
+    let joined = query.join(" ");
+    if joined.trim().is_empty() {
+        eprintln!("search: empty query");
+        return Ok(());
+    }
+    let lim = if all { 500 } else { n };
+    let coll = collection.as_deref();
+    let mut hits = fts_search(&joined, lim, coll)?;
+    if let Some(ms) = min_score {
+        hits.retain(|h| h.score >= ms);
+    }
+    let effective = if json {
+        OutputFormat::Json
+    } else if files {
+        OutputFormat::Files
+    } else {
+        format
+    };
+    match effective {
+        OutputFormat::Json => {
+            println!("{}", serde_json::to_string_pretty(&hits)?);
+        }
+        OutputFormat::Files => {
+            for h in &hits {
+                println!("{}", h.file);
+            }
+        }
+        _ => {
+            if hits.is_empty() {
+                println!("No matches for '{}'", joined);
+            } else {
+                for h in &hits {
+                    println!("{} {}", h.file, h.docid);
+                    println!("Title: {}", h.title);
+                    println!("Score: {:.0}%", h.score * 100.0);
+                    println!();
+                    println!("{}", h.snippet);
+                    println!();
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+// --- mcp stdio (minimal functional JSON-RPC for status/get/query; http stubbed) ---
+
+fn cmd_mcp(http: bool, _port: u16, daemon: bool) -> Result<()> {
+    if http || daemon {
+        eprintln!("MCP --http/--daemon not implemented in Rust port yet.");
+        eprintln!("Use: /opt/homebrew/bin/qmd mcp   or cargo run -- mcp (for stdio)");
+        return Ok(());
+    }
+    eprintln!("[qmd-rust] minimal MCP stdio server starting (tools: status, get, query[lex], multi_get stub)");
+    run_mcp_stdio_loop()
+}
+
+fn run_mcp_stdio_loop() -> Result<()> {
+    // Acquire exclusive lock on stdin for the lifetime of the stdio MCP transport.
+    // This is the standard pattern for line-delimited JSON-RPC servers (prevents interleaving with any other stdin use).
+    let stdin = io::stdin();
+    let reader = BufReader::new(stdin.lock());
+    let mut lines = reader.lines();
+    loop {
+        let line = match lines.next() {
+            Some(Ok(l)) => l,
+            Some(Err(_)) => break,
+            None => break,
+        };
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        let req: serde_json::Value = match serde_json::from_str(trimmed) {
+            Ok(v) => v,
+            Err(_) => {
+                // Emit proper JSON-RPC parse error (id null is acceptable per spec for parse failures)
+                let err = serde_json::json!({
+                    "jsonrpc": "2.0",
+                    "id": null,
+                    "error": { "code": -32700, "message": "Parse error" }
+                });
+                println!("{}", serde_json::to_string(&err).unwrap_or_default());
+                let _ = io::stdout().flush();
+                continue;
+            }
+        };
+        let id = req.get("id").cloned().unwrap_or(serde_json::Value::Null);
+        let method = req.get("method").and_then(|m| m.as_str()).unwrap_or("");
+        let resp = match method {
+            "initialize" => {
+                serde_json::json!({
+                    "jsonrpc": "2.0",
+                    "id": id,
+                    "result": {
+                        "protocolVersion": "2024-11-05",
+                        "capabilities": { "tools": { "listChanged": false } },
+                        "serverInfo": { "name": "qmd-rust", "version": VERSION }
+                    }
+                })
+            }
+            "tools/list" => {
+                serde_json::json!({
+                    "jsonrpc": "2.0",
+                    "id": id,
+                    "result": {
+                        "tools": [
+                            {
+                                "name": "status",
+                                "description": "Return QMD index status (docs, collections, models)",
+                                "inputSchema": { "type": "object", "properties": {} }
+                            },
+                            {
+                                "name": "get",
+                                "description": "Retrieve document content by qmd:// path or #docid",
+                                "inputSchema": { "type": "object", "properties": { "file": { "type": "string" }, "l": {"type":"number"}, "line_numbers": {"type":"boolean"} } }
+                            },
+                            {
+                                "name": "multi_get",
+                                "description": "Not fully implemented in this minimal MCP; use Node reference for now",
+                                "inputSchema": { "type": "object", "properties": { "pattern": { "type": "string" } } }
+                            },
+                            {
+                                "name": "query",
+                                "description": "Lexical (BM25/FTS5) search. Pass {query: string}. (vec/hyde not in Rust yet)",
+                                "inputSchema": { "type": "object", "properties": { "query": { "type": "string" }, "n": {"type":"number"}, "collection": {"type":"string"} } }
+                            }
+                        ]
+                    }
+                })
+            }
+            "tools/call" => {
+                let tname = req
+                    .get("params")
+                    .and_then(|p| p.get("name"))
+                    .and_then(|n| n.as_str())
+                    .unwrap_or("");
+                let args = req
+                    .get("params")
+                    .and_then(|p| p.get("arguments"))
+                    .cloned()
+                    .unwrap_or(serde_json::Value::Object(serde_json::Map::new()));
+                let text = match tname {
+                    "status" => {
+                        // best effort text status
+                        let cfg = load_config().unwrap_or_default();
+                        let (docs, vecs) = db_counts(INDEX_PATH).unwrap_or((0, 0));
+                        let colls: Vec<_> = cfg
+                            .collections
+                            .as_ref()
+                            .map(|m| m.keys().cloned().collect())
+                            .unwrap_or_default();
+                        format!(
+                            "QMD Rust status: {} docs, {} vectors, collections: {:?}",
+                            docs, vecs, colls
+                        )
+                    }
+                    "get" => {
+                        let mut f = args
+                            .get("file")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("")
+                            .to_string();
+                        let mut start_line: usize = 1;
+                        if let Some(pos) = f.rfind(':') {
+                            if let Ok(n) = f[pos + 1..].parse::<usize>() {
+                                if n > 0 {
+                                    start_line = n;
+                                    f = f[..pos].to_string();
+                                }
+                            }
+                        }
+                        let max_l = args.get("l").and_then(|x| x.as_u64()).map(|v| v as usize);
+                        let line_numbers = args
+                            .get("line_numbers")
+                            .and_then(|x| x.as_bool())
+                            .unwrap_or(false);
+                        // DB first, then disk (parity with CLI get)
+                        let body = if let Some(b) = get_body_from_db(&f) {
+                            b
+                        } else {
+                            // minimal disk resolve for MCP
+                            let fs_path = if let Some(stripped) = f.strip_prefix("~/") {
+                                if let Some(home) = env::var_os("HOME") {
+                                    format!("{}/{}", home.to_string_lossy(), stripped)
+                                } else {
+                                    f.clone()
+                                }
+                            } else if !f.starts_with('/') && !f.starts_with('~') {
+                                let cwd = env::current_dir()
+                                    .map(|p| p.to_string_lossy().to_string())
+                                    .unwrap_or_default();
+                                if cwd.is_empty() {
+                                    f.clone()
+                                } else {
+                                    format!("{}/{}", cwd, f)
+                                }
+                            } else {
+                                f.clone()
+                            };
+                            fs::read_to_string(&fs_path)
+                                .unwrap_or_else(|_| format!("(not found on disk: {})", fs_path))
+                        };
+                        // slice + numbers (reuse safe logic pattern)
+                        let all_lines: Vec<&str> = body.lines().collect();
+                        let start_idx = start_line.saturating_sub(1).min(all_lines.len());
+                        let end_idx = if let Some(ml) = max_l {
+                            (start_idx + ml).min(all_lines.len())
+                        } else {
+                            all_lines.len()
+                        };
+                        let selected = &all_lines[start_idx..end_idx.min(all_lines.len())];
+                        if line_numbers {
+                            selected
+                                .iter()
+                                .enumerate()
+                                .map(|(i, ln)| format!("{}: {}", start_line + i, ln))
+                                .collect::<Vec<_>>()
+                                .join("\n")
+                        } else {
+                            selected.join("\n")
+                        }
+                    }
+                    "query" => {
+                        let q = args.get("query").and_then(|v| v.as_str()).unwrap_or("");
+                        let n = args.get("n").and_then(|v| v.as_u64()).unwrap_or(5) as usize;
+                        let coll = args.get("collection").and_then(|v| v.as_str());
+                        if let Ok(hits) = fts_search(q, n, coll) {
+                            hits.iter()
+                                .map(|h| {
+                                    format!(
+                                        "{} {} (score {:.0}%)",
+                                        h.file,
+                                        h.docid,
+                                        h.score * 100.0
+                                    )
+                                })
+                                .collect::<Vec<_>>()
+                                .join("\n")
+                        } else {
+                            "search error".to_string()
+                        }
+                    }
+                    "multi_get" => {
+                        "multi_get not implemented in minimal Rust MCP (use Node)".to_string()
+                    }
+                    _ => format!("unknown tool: {}", tname),
+                };
+                serde_json::json!({
+                    "jsonrpc": "2.0",
+                    "id": id,
+                    "result": {
+                        "content": [ { "type": "text", "text": text } ]
+                    }
+                })
+            }
+            "notifications/initialized" | "exit" => {
+                // no response for notifications
+                continue;
+            }
+            _ => {
+                serde_json::json!({
+                    "jsonrpc": "2.0",
+                    "id": id,
+                    "error": { "code": -32601, "message": "Method not found" }
+                })
+            }
+        };
+        let out = serde_json::to_string(&resp)?;
+        println!("{}", out);
+        let _ = io::stdout().flush(); // best-effort; errors are non-fatal for stdio transport (MCP clients tolerant)
+    }
+    Ok(())
 }
