@@ -115,8 +115,25 @@ if [ -z "$VERSION" ]; then
   VERSION=$(curl -fsSL "https://api.github.com/repos/${REPO}/releases/latest" \
     | grep '"tag_name":' | head -1 | sed -E 's/.*"([^"]+)".*/\1/')
   if [ -z "$VERSION" ]; then
-    echo "Failed to detect latest version from GitHub API." >&2
-    echo "Pass --version explicitly." >&2
+    echo "Failed to detect latest release from the GitHub API." >&2
+    echo "" >&2
+    echo "Most common cause right now: this repository has not published any releases yet." >&2
+    echo "(This is expected during the initial setup / first release of the Rust port.)" >&2
+    echo "" >&2
+    echo "What you can do instead:" >&2
+    echo "" >&2
+    echo "  1. Install from source (works today):" >&2
+    echo "       git clone https://github.com/simonellefsen/qmd-rust.git" >&2
+    echo "       cd qmd-rust" >&2
+    echo "       cargo build --release" >&2
+    echo "       ./target/release/qmd --help" >&2
+    echo "" >&2
+    echo "  2. Create a test release tag so the one-liner starts working" >&2
+    echo "     (see wiki/runbooks/release.md → \"First Real Release Checklist\")" >&2
+    echo "" >&2
+    echo "  3. Once a release exists, you can also pin a specific tag:" >&2
+    echo "       curl ... | sh -s -- --version v0.2.0-test" >&2
+    echo "" >&2
     exit 1
   fi
 fi
