@@ -74,7 +74,8 @@ fn main() -> Result<()> {
         }
 
         Some(Commands::Status { json }) => {
-            cmd_status(json)?;
+            // Using the extracted implementation
+            qmd::cli::commands::status::cmd_status(json)?;
         }
 
         Some(Commands::Init { force }) => {
