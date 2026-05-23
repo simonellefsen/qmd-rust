@@ -2,6 +2,19 @@
 
 ## [Unreleased]
 
+### Added
+
+- **Rust port foundation**: Initialized Cargo binary (`qmd`), basic clap CLI that mirrors the original command surface (`query`, `search`, `status`, `get`, `collection`, `context`, `mcp`, `init`, etc.).
+- **Working `status` command**: The Rust binary can already read `~/.config/qmd/index.yml` and query the real SQLite index (documents, vectors, collections, last updated) — useful for parity testing against the Node reference.
+- **Extensive educational comments**: `src/main.rs` now contains beginner-friendly commentary aimed at Python/Node.js/TypeScript developers, explaining ownership, `Option`/`Result` + `?`, enums as ADTs, clap derive macros, rusqlite patterns, etc.
+- **Project knowledge wiki** (`wiki/`): Adopted the exact llm-wiki structure demonstrated by the `rust_daytrader` project (schema.md, index.md, parseable log.md, typed source-notes, concepts, runbooks, decisions, experiments). Includes a dedicated `concepts/rust-for-python-node-developers.md` page.
+- **AGENTS.md**: Replaced the legacy `CLAUDE.md` with an agent instruction file adapted for Rust development, the llm-wiki pattern, and safe referencing of external inspiration projects.
+- Cleaned all wiki pages and documentation to contain only references that stay inside this repository (no more machine-specific absolute paths to sibling projects).
+
+### Changed
+
+- `.gitignore`: Updated to allow `AGENTS.md` and standard Rust artifacts while preserving the spirit of the original rules.
+
 ## [2.5.2] - 2026-05-22
 
 ### Fixes

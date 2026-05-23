@@ -10,11 +10,22 @@ texts/
 .github/copilot/
 *.md
 !README.md
-!CLAUDE.md
+!AGENTS.md
 !CHANGELOG.md
 !skills/**/*.md
 !finetune/*.md
 !docs/*.md
+!wiki/**/*.md
 finetune/outputs/
 finetune/data/train/
 .claude/
+
+# Rust
+/target/
+**/*.rs.bk
+.cargo/
+
+
+# Added by cargo
+
+/target
