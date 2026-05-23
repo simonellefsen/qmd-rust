@@ -65,3 +65,26 @@ Use it (via the Node qmd today, via Rust qmd once `collection list` / search wor
 - The binary produced by `cargo build --release` is what will eventually be shipped to agents.
 - All FFI (rusqlite, sqlite-vec extension, llama-cpp) must be minimal and reviewed.
 - Model downloads go through the standard llama.cpp / hf cache mechanisms — no custom downloaders that could be confused for supply-chain attacks.
+
+## Current Crate Layout (May 2026)
+
+We are moving away from the original monolithic `src/main.rs` (which grew to ~1680 lines during the initial CLI implementation).
+
+Target structure:
+
+```
+src/
+├── main.rs          # thin: just parse + dispatch
+├── lib.rs
+├── cli/
+│   ├── mod.rs
+│   └── args.rs      # clap definitions (Cli, Commands, CollectionAction, ...)
+├── config/          # YAML index.yml handling
+├── db/              # rusqlite + FTS5 + collection persistence
+├── mcp/             # MCP server implementation
+└── utils/
+```
+
+**Rule of thumb for contributors**: New logic should go into the appropriate module under `src/`, not be appended to `main.rs`.
+
+See `src/lib.rs` and the subdirectories for the current state of the refactor.

@@ -33,7 +33,7 @@ qmd (the tool) is the recommended search backend for exactly this kind of persis
 
 ## Runbooks
 
-- [runbooks/rust-development](runbooks/rust-development.md) — Cargo workflow, testing against the Node reference binary, parity requirements, `cargo run --` vs installed `qmd`.
+- [runbooks/rust-development](runbooks/rust-development.md) — Cargo workflow, current crate layout, testing against the Node reference, parity, and how to contribute to the modularization.
 - [runbooks/model-management](runbooks/model-management.md) — GGUF embedding/rerank/expansion models, cache locations, CPU/GPU flags, updates.
 - [runbooks/release](runbooks/release.md) — How the Rust binary will be packaged, Nix, potential Homebrew, changelog rules.
 
