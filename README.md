@@ -6,24 +6,72 @@ QMD indexes markdown, notes, meeting transcripts, documentation, and code. It of
 
 This is a from-scratch Rust reimplementation of the original [qmd](https://github.com/tobi/qmd) tool. The primary motivation is **security and minimal trusted computing base** when the tool is used by LLM agents (via CLI or MCP).
 
-## Quick Start
+## Installation
+
+### One-liner (macOS / Linux)
 
 ```sh
-# Build from source (recommended while in active development)
+curl -fsSL https://raw.githubusercontent.com/simonellefsen/qmd-rust/main/install.sh | sh
+```
+
+This downloads the pre-built binary for your architecture from the latest GitHub Release, verifies the checksum, and installs it to `/usr/local/bin` or `~/.local/bin`.
+
+### Homebrew (recommended once published)
+
+```sh
+brew tap simonellefsen/qmd
+brew install qmd
+```
+
+The tap and formula are maintained automatically by the cargo-dist release workflow.
+
+### From source (always works)
+
+```sh
 git clone https://github.com/simonellefsen/qmd-rust.git
 cd qmd-rust
 cargo build --release
-./target/release/qmd --help
+# then copy ./target/release/qmd to a directory in your $PATH, or
+cargo install --path .
 ```
 
-Or run directly during development:
+During development:
 
 ```sh
 cargo run -- status
 cargo run -- search "your query"
 ```
 
-### Basic Usage
+### Migrating from the Node.js version (`@tobilu/qmd`)
+
+If `npm list -g --depth=0` shows `@tobilu/qmd`, uninstall it first:
+
+```sh
+npm uninstall -g @tobilu/qmd
+```
+
+**Why this fixes most problems**: The old package installs a Node.js launcher script as `qmd` in your global bin directory (usually `/opt/homebrew/bin` on Apple Silicon). This frequently shadows the Rust binary or leaves uninstall in a confusing state because the published name is the *scoped* package `@tobilu/qmd`, not `qmd`.
+
+After uninstall:
+
+- `which qmd` should resolve to the Rust binary (or your newly installed one).
+- Run `qmd status` — it will report "Rust port".
+- Your data is **completely compatible** — both versions use:
+  - `~/.cache/qmd/index.sqlite` (the actual index)
+  - `~/.config/qmd/index.yml` (collection definitions)
+
+No re-indexing or collection re-adding is required.
+
+If a stale `qmd` script remains after `npm uninstall`, remove it manually:
+
+```sh
+rm -f /opt/homebrew/bin/qmd
+# or wherever `which qmd` pointed before the uninstall
+```
+
+Then re-run the one-liner or `cargo install`.
+
+## Basic Usage
 
 ```sh
 # Create a collection

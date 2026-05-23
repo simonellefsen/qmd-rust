@@ -28,6 +28,22 @@ BINARY="qmd"
 VERSION=""
 INSTALL_DIR=""
 
+# Detect lingering Node.js / npm version of qmd (published as @tobilu/qmd).
+# This is the #1 cause of "wrong qmd in PATH" and uninstall headaches when
+# switching to the Rust binary. We warn early so users can clean it up before
+# the new binary is installed (data in ~/.cache/qmd and ~/.config/qmd is shared
+# and safe).
+if command -v npm >/dev/null 2>&1; then
+  if npm list -g --depth=0 2>/dev/null | grep -q '@tobilu/qmd'; then
+    echo "⚠️  Old Node.js version (@tobilu/qmd) detected in global npm packages." >&2
+    echo "   This frequently leaves a stale 'qmd' launcher in PATH and makes uninstall tricky." >&2
+    echo "   Recommended fix (run this, then re-run the installer if desired):" >&2
+    echo "     npm uninstall -g @tobilu/qmd" >&2
+    echo "   Your collections, index (~/.cache/qmd/index.sqlite), and config are preserved." >&2
+    echo "" >&2
+  fi
+fi
+
 usage() {
   echo "qmd installer"
   echo "Usage: $0 [--version <tag>] [--to <dir>] [--help]"

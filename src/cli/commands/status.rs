@@ -17,10 +17,15 @@ pub fn cmd_status(json: bool) -> Result<()> {
 
     let collection_count = cfg.collections.as_ref().map(|c| c.len()).unwrap_or(0);
 
+    let exe = std::env::current_exe()
+        .map(|p| p.display().to_string())
+        .unwrap_or_else(|_| "unknown".to_string());
+
     if json {
         println!(
-            r#"{{"version":"{}","rust":true,"index":"{}","documents":{},"vectors":{},"collections":{}}}"#,
+            r#"{{"version":"{}","rust":true,"exe":"{}","index":"{}","documents":{},"vectors":{},"collections":{}}}"#,
             env!("CARGO_PKG_VERSION"),
+            exe,
             index,
             doc_count,
             vec_count,
@@ -29,7 +34,8 @@ pub fn cmd_status(json: bool) -> Result<()> {
     } else {
         println!("QMD Status (Rust port v{})", env!("CARGO_PKG_VERSION"));
         println!();
-        println!("Index: {}", index);
+        println!("Binary: {}", exe);
+        println!("Index:  {}", index);
 
         // Size, collections, models, etc. can be expanded here later
         println!("Documents: {} ({} vectors)", doc_count, vec_count);
