@@ -47,7 +47,7 @@ pub fn cmd_query(
                 eprintln!("explain: simple lex query → {}", s);
             }
             ParsedQuery::Structured { intent, clauses } => {
-                eprintln!("explain: structured query (lex-only path)");
+                eprintln!("explain: structured query");
                 if let Some(i) = intent {
                     eprintln!("  intent: {}", i);
                 }

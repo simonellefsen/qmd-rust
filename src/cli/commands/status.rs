@@ -10,12 +10,13 @@ use crate::embed::default_embedder;
 use anyhow::Result;
 
 const INDEX_PATH: &str = "~/.cache/qmd/index.sqlite";
+#[allow(dead_code)] // kept for future parity / extension (see review nit #10)
 const CONFIG_DIR: &str = "~/.config/qmd";
 
 /// Handle the `qmd status` (and `status --json`) command.
 pub fn cmd_status(json: bool) -> Result<()> {
     let index = expand_tilde(INDEX_PATH);
-    let _config_dir = expand_tilde(CONFIG_DIR);
+    // CONFIG_DIR constant kept for future parity / extension (no new path literals rule).
 
     let cfg = load_config().unwrap_or_default();
     let (doc_count, vec_count) = db_counts(INDEX_PATH).unwrap_or((0, 0));
@@ -61,18 +62,16 @@ pub fn cmd_status(json: bool) -> Result<()> {
     }
 
     if json {
-        // Extended JSON (back-compat: original fields preserved; new keys added)
-        let models_json = format!(
-            "{{\"embed\":\"{}\",\"generate\":\"{}\",\"rerank\":\"{}\"}}",
-            embed_m.as_deref().unwrap_or(""),
-            gen_m.as_deref().unwrap_or(""),
-            rer_m.as_deref().unwrap_or("")
-        );
-        let warn_json = if warnings.is_empty() {
-            "[]".to_string()
-        } else {
-            format!("[\"{}\"]", warnings.join("\",\""))
-        };
+        // Extended JSON (back-compat: original fields preserved; new keys added).
+        // Use serde_json::json! for the variable portions so that model paths and
+        // warning texts containing quotes, backslashes, etc. are correctly escaped.
+        // (Addresses raw-interpolation bug in the 0.5 slice.)
+        let models_val = serde_json::json!({
+            "embed": embed_m.as_deref().unwrap_or(""),
+            "generate": gen_m.as_deref().unwrap_or(""),
+            "rerank": rer_m.as_deref().unwrap_or("")
+        });
+        let warn_val = serde_json::json!(warnings);
         println!(
             r#"{{"version":"{}","rust":true,"exe":"{}","index":"{}","documents":{},"vectors":{},"collections":{},"embed_model":"{}","embed_dim":{},"real_embed":{},"vector_health":"{}","models":{},"warnings":{}}}"#,
             env!("CARGO_PKG_VERSION"),
@@ -85,8 +84,8 @@ pub fn cmd_status(json: bool) -> Result<()> {
             embed_dim,
             real_embed,
             vec_health,
-            models_json,
-            warn_json
+            models_val,
+            warn_val
         );
     } else {
         println!("QMD Status (Rust port v{})", env!("CARGO_PKG_VERSION"));

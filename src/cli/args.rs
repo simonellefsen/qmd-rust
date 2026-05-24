@@ -224,6 +224,10 @@ pub enum ContextAction {
     Rm {
         path: String,
     },
+    /// Rust-only diagnostic (hidden from --help for strict CLI parity with the reference,
+    /// which only advertises add/list/rm for context). The implementation remains for
+    /// internal use and future status integration.
+    #[command(hide = true)]
     Check,
 }
 

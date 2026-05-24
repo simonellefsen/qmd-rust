@@ -168,11 +168,11 @@ fn main() -> Result<()> {
         }
 
         Some(Commands::Context { action }) => {
-            qmd::cli::commands::cmd_context(action)?;
+            qmd::cli::commands::context::cmd_context(action)?;
         }
 
         Some(Commands::Cleanup) => {
-            qmd::cli::commands::cmd_cleanup()?;
+            qmd::cli::commands::cleanup::cmd_cleanup()?;
         }
 
         // This arm catches every command we have *declared* in the enum but have

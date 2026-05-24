@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.5.1] - 2026-05-24
+
+- Extract `context` and `cleanup` command implementations into their own modules (`src/cli/commands/context.rs`, `cleanup.rs`) for maintainability (addresses review finding from v0.5.0). Fixed 4 bugs reported in review (collection existence guard before YAML mutation, `context check` hidden for surface parity, safe JSON construction in `status --json`, stale comments). Small deduplication and polish. All per smallest viable + fmt + clippy clean.
+
 ## [0.4.0] - 2026-05-24
 
 - Minimal `QmdError`/`QmdResult` + atomic exit helpers (utils/ foundation for future shared logic); single usage site in dispatch + 4 smallest workflow comment/skeleton updates (parity, size reporting, separation, repro). All per smallest-viable + fmt+clippy clean.
