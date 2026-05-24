@@ -277,11 +277,51 @@ mod tests {
     fn test_update_path_end_to_end_with_ignore_patterns() {
         // Exercises A-E: discover + upsert (with ignores from C), improved upsert (B),
         // via temp dir as collection root. Uses unique coll name to avoid clobber.
+        //
+        // Self-contained schema bootstrap so the test works even on a completely fresh
+        // SQLite file (important for CI where no prior qmd run has created tables).
         let pid = std::process::id();
         let tmp = std::env::temp_dir().join(format!("qmd-rust-test-idx-{}", pid));
         // fresh dir
         let _ = fs::remove_dir_all(&tmp);
         fs::create_dir_all(&tmp).unwrap();
+
+        // Ensure minimal schema exists (tables touched by upsert_document + FTS).
+        // This makes the test hermetic and removes the hidden dependency on the TS
+        // version having run previously.
+        {
+            let conn = crate::db::open_connection(false).unwrap();
+            conn.execute_batch(
+                r#"
+                CREATE TABLE IF NOT EXISTS content (
+                    hash TEXT PRIMARY KEY,
+                    doc TEXT NOT NULL,
+                    created_at TEXT
+                );
+                CREATE TABLE IF NOT EXISTS documents (
+                    id INTEGER PRIMARY KEY,
+                    collection TEXT NOT NULL,
+                    path TEXT NOT NULL,
+                    title TEXT,
+                    hash TEXT,
+                    created_at TEXT,
+                    modified_at TEXT,
+                    active INTEGER DEFAULT 1,
+                    UNIQUE(collection, path)
+                );
+                CREATE VIRTUAL TABLE IF NOT EXISTS documents_fts USING fts5(
+                    filepath, title, body, tokenize='unicode61'
+                );
+                CREATE TABLE IF NOT EXISTS store_collections (
+                    name TEXT PRIMARY KEY,
+                    path TEXT,
+                    mask TEXT,
+                    context TEXT,
+                    last_indexed TEXT
+                );
+                "#,
+            ).unwrap();
+        }
 
         // good files
         fs::write(
@@ -339,9 +379,15 @@ mod tests {
 
         // cleanup fs temp
         let _ = fs::remove_dir_all(&tmp);
-        // Full removal of test collection rows for true isolation (no active or inactive leftovers in the shared production index).
-        // Content orphans (by hash) are harmless and cleaned by future `qmd cleanup`.
+        // Thorough cleanup for true isolation on the shared index used by CI and local dev.
         let _ = conn.execute("DELETE FROM documents WHERE collection = ?", [&coll]);
         let _ = conn.execute("DELETE FROM store_collections WHERE name = ?", [&coll]);
+        // Also clean content and FTS entries that might be referenced by the test docs.
+        let _ = conn.execute(
+            "DELETE FROM content WHERE hash IN (SELECT hash FROM documents WHERE collection = ?)",
+            [&coll],
+        );
+        // Note: documents_fts is a virtual table; rowids are tied to documents.id, so deleting
+        // the documents rows above is usually sufficient. Explicit cleanup kept minimal.
     }
 }
