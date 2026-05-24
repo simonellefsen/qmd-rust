@@ -253,3 +253,166 @@ pub fn fts_search(query: &str, limit: usize, collection: Option<&str>) -> Result
         Ok(rows)
     }
 }
+
+/// Cosine similarity for two f32 vectors (used for vsearch / vec:).
+/// Returns 0.0 on length mismatch or zero-norm.
+fn cosine(a: &[f32], b: &[f32]) -> f32 {
+    if a.len() != b.len() || a.is_empty() {
+        return 0.0;
+    }
+    let dot: f32 = a.iter().zip(b.iter()).map(|(x, y)| x * y).sum();
+    let na: f32 = a.iter().map(|x| x * x).sum::<f32>().sqrt();
+    let nb: f32 = b.iter().map(|x| x * x).sum::<f32>().sqrt();
+    if na == 0.0 || nb == 0.0 {
+        0.0
+    } else {
+        dot / (na * nb)
+    }
+}
+
+/// Deserialize a little-endian f32 BLOB (as stored by store_vectors).
+/// The caller must ensure the length is a multiple of 4 (guarded by is_multiple_of + chunks_exact before calling).
+/// Uses expect (not unwrap on the try_into) with a comment; the guard makes it infallible.
+fn deserialize_f32_le(bytes: &[u8]) -> Vec<f32> {
+    // Guarded by prior `is_multiple_of(4) && chunks_exact(4)` at the call sites.
+    bytes
+        .chunks_exact(4)
+        .map(|b| f32::from_le_bytes(b.try_into().expect("4-byte chunk from chunks_exact")))
+        .collect()
+}
+
+/// Basic vector similarity search over stored chunks in `content_vectors`.
+/// Returns top hits by cosine similarity to `qvec`, reusing the FtsHit shape
+/// for output compatibility (score = raw cosine in ~[-1,1], typically positive for embeds).
+/// Dedups to best chunk per file path. Respects collection filter if given.
+/// Current limitations (see Issue 3): in-memory cap of 100k candidates with recency
+/// bias (ORDER BY modified_at); no full scan or ANN. Sufficient for personal wikis
+/// in this first real sub-slice; future slice will add bounded/ANN options.
+pub fn vec_search(qvec: &[f32], limit: usize, collection: Option<&str>) -> Result<Vec<FtsHit>> {
+    if qvec.is_empty() {
+        return Ok(vec![]);
+    }
+    let conn = open_connection(true)?;
+
+    // In-memory candidate cap for this basic slice (no sqlite-vec / ANN yet).
+    // 100k f32 vectors is ~300 MiB peak (768*4 bytes each) — acceptable for a CLI on modern hardware.
+    // ORDER BY modified_at DESC provides a simple "recently edited likely relevant" heuristic
+    // for candidate selection when we can't afford a full scan. Old but highly relevant notes
+    // can still be missed if the index exceeds the cap. Full / bounded-ANN or optional
+    // sqlite-vec support is future work (see Issue 3 in review and limitations in summary).
+    #[allow(dead_code)] // named for documentation + future configurability; value appears in SQL literals below
+    const MAX_VEC_CANDIDATES: i64 = 100_000;
+
+    // Two small branches — keeps binding simple and compiles cleanly.
+    let mut scored: Vec<FtsHit> = if let Some(c) = collection {
+        let sql = r#"
+            SELECT 'qmd://' || d.collection || '/' || d.path as filepath,
+                   d.title,
+                   d.hash,
+                   content.doc as body,
+                   v.vector
+            FROM content_vectors v
+            JOIN documents d ON d.hash = v.hash AND d.active = 1
+            JOIN content ON content.hash = d.hash
+            WHERE d.collection = ?
+            ORDER BY d.modified_at DESC
+            LIMIT 100000
+        "#;
+        let mut stmt = conn.prepare(sql)?;
+        let rows_iter = stmt.query_map([c], |r| {
+            let filepath: String = r.get(0)?;
+            let title: String = r.get(1)?;
+            let hash: String = r.get(2)?;
+            let body: String = r.get(3)?;
+            let vec_bytes: Vec<u8> = r.get(4)?;
+            let v: Vec<f32> = if vec_bytes.len().is_multiple_of(4) {
+                deserialize_f32_le(&vec_bytes)
+            } else {
+                vec![]
+            };
+            let sim = cosine(qvec, &v);
+            let docid = if hash.len() >= 6 {
+                format!("#{}", &hash[0..6])
+            } else {
+                format!("#{}", hash)
+            };
+            let snippet: String = body.chars().take(220).collect();
+            Ok((filepath, title, docid, sim, snippet))
+        })?;
+        rows_iter
+            .filter_map(|x| x.ok())
+            .map(|(file, title, docid, score, snippet)| FtsHit {
+                file,
+                docid,
+                title,
+                score,
+                snippet,
+            })
+            .collect()
+    } else {
+        let sql = r#"
+            SELECT 'qmd://' || d.collection || '/' || d.path as filepath,
+                   d.title,
+                   d.hash,
+                   content.doc as body,
+                   v.vector
+            FROM content_vectors v
+            JOIN documents d ON d.hash = v.hash AND d.active = 1
+            JOIN content ON content.hash = d.hash
+            ORDER BY d.modified_at DESC
+            LIMIT 100000
+        "#;
+        let mut stmt = conn.prepare(sql)?;
+        let rows_iter = stmt.query_map([], |r| {
+            let filepath: String = r.get(0)?;
+            let title: String = r.get(1)?;
+            let hash: String = r.get(2)?;
+            let body: String = r.get(3)?;
+            let vec_bytes: Vec<u8> = r.get(4)?;
+            let v: Vec<f32> = if vec_bytes.len().is_multiple_of(4) {
+                deserialize_f32_le(&vec_bytes)
+            } else {
+                vec![]
+            };
+            let sim = cosine(qvec, &v);
+            let docid = if hash.len() >= 6 {
+                format!("#{}", &hash[0..6])
+            } else {
+                format!("#{}", hash)
+            };
+            let snippet: String = body.chars().take(220).collect();
+            Ok((filepath, title, docid, sim, snippet))
+        })?;
+        rows_iter
+            .filter_map(|x| x.ok())
+            .map(|(file, title, docid, score, snippet)| FtsHit {
+                file,
+                docid,
+                title,
+                score,
+                snippet,
+            })
+            .collect()
+    };
+
+    // Sort by cosine desc (higher = better)
+    scored.sort_by(|a, b| {
+        b.score
+            .partial_cmp(&a.score)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+
+    // Dedup: keep only the best-scoring hit per file (so vsearch returns docs, not duplicate chunks)
+    let mut seen = std::collections::HashSet::new();
+    let mut deduped = Vec::new();
+    for h in scored {
+        if seen.insert(h.file.clone()) {
+            deduped.push(h);
+            if deduped.len() >= limit {
+                break;
+            }
+        }
+    }
+
+    Ok(deduped)
+}

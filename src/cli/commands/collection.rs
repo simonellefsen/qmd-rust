@@ -26,6 +26,11 @@ pub fn cmd_collection(action: CollectionAction) -> Result<()> {
                 let (fcount, last) = get_collection_stats(name);
                 println!("{} (qmd://{}/)", name, name);
                 println!("  Pattern:  {}", c.pattern);
+                if let Some(ips) = &c.ignore_patterns {
+                    if !ips.is_empty() {
+                        println!("  Ignore:   {}", ips.join(", "));
+                    }
+                }
                 println!("  Files:    {}", fcount);
                 println!("  Path:     {}", c.path);
                 if !last.is_empty() && last != "unknown" {
@@ -182,6 +187,11 @@ pub fn cmd_collection(action: CollectionAction) -> Result<()> {
                 println!("Collection: {}", name);
                 println!("  Path:     {}", c.path);
                 println!("  Pattern:  {}", c.pattern);
+                if let Some(ips) = &c.ignore_patterns {
+                    if !ips.is_empty() {
+                        println!("  Ignore:   {}", ips.join(", "));
+                    }
+                }
                 println!("  Files:    {}", fcount);
                 println!("  Updated:  {}", last);
                 return Ok(());

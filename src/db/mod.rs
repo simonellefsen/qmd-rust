@@ -19,6 +19,9 @@ pub struct CollectionCfg {
     pub path: String,
     #[serde(default = "default_pattern")]
     pub pattern: String,
+    /// Per-collection ignore globs (supports `ignore:` or `ignore_patterns:` in YAML for compatibility)
+    #[serde(default, alias = "ignore", alias = "ignore_patterns")]
+    pub ignore_patterns: Option<Vec<String>>,
 }
 
 fn default_pattern() -> String {
@@ -135,4 +138,4 @@ pub fn save_config_value(v: &serde_yaml::Value) -> Result<()> {
 }
 
 pub mod search;
-pub use search::{build_fts5_query, fts_search, FtsHit};
+pub use search::{build_fts5_query, fts_search, vec_search, FtsHit};

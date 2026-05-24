@@ -147,6 +147,11 @@ pub enum Commands {
     Update {
         #[arg(long)]
         pull: bool,
+        /// After raw content update, also (re)generate embeddings for new or changed chunks.
+        /// Requires a build with the `llama-embed` feature and a GGUF embed model configured
+        /// (QMD_EMBED_MODEL or models.embed in index.yml). Uses fingerprinting to skip work.
+        #[arg(long)]
+        embed: bool,
     },
 
     /// Generate or refresh vector embeddings

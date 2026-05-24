@@ -4,12 +4,14 @@
 //! Shared path/FS helpers for ls/get/mcp live here (pub(crate) so submodules can `use super::` them).
 
 pub mod collection;
+pub mod embed;
 pub mod get;
 pub mod ls;
 pub mod mcp;
 pub mod query;
 pub mod search;
 pub mod status;
+pub mod update; // Area 2 first slice (update + embed stub)
 
 use crate::db::open_connection;
 
