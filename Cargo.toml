@@ -1,6 +1,6 @@
 [package]
 name = "qmd"
-version = "0.3.0"
+version = "0.4.0"
 edition = "2021"
 description = "Query Markup Documents - secure Rust port of the on-device hybrid search engine"
 license = "MIT"
@@ -26,7 +26,19 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 serde_yaml = "0.9"
 rusqlite = { version = "0.32", features = ["bundled"] }  # bundled for FTS5 reliability; later switch to system + vec extension load
+walkdir = "2.5"
+globset = "0.4"
+blake3 = "1.5"
+chrono = { version = "0.4", features = ["serde"] }
 # More deps added incrementally: sqlite-vec loader, llama-cpp-*, tree-sitter-*, etc.
+
+[dependencies.llama-cpp-2]
+version = "0.1"
+optional = true
+features = ["metal"]
+
+[features]
+llama-embed = ["dep:llama-cpp-2"]
 
 [dev-dependencies]
 # testing crates later

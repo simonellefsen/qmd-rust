@@ -11,8 +11,10 @@
 pub mod cli;
 pub mod config;
 pub mod db;
-// pub mod mcp;   // to be extracted later (MCP logic currently lives under cli::commands::mcp)
-// pub mod utils;
+pub mod embed; // Area 2: embedding generation (on top of update)
+pub mod index; // Area 2: file discovery + indexing (update/embed)
+               // pub mod mcp;   // to be extracted later (MCP logic currently lives under cli::commands::mcp)
+pub mod utils;
 
 pub use cli::args::{
     Cli, CollectionAction, Commands, ContextAction, OutputFormat, SkillAction, SkillsAction,
@@ -21,6 +23,6 @@ pub use cli::commands; // command handlers (cmd_status, cmd_search, etc.) for di
 pub use db::{
     db_counts, expand_tilde, get_collection_stats, last_updated_hint, load_config,
     load_config_value, open_connection, save_config_value,
-    search::{build_fts5_query, fts_search, FtsHit},
+    search::{build_fts5_query, fts_search, vec_search, FtsHit},
     CollectionCfg, ModelsCfg, QmdConfig,
 };

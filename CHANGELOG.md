@@ -1,6 +1,27 @@
 # Changelog
 
+## [0.4.0] - 2026-05-24
+
+- Minimal `QmdError`/`QmdResult` + atomic exit helpers (utils/ foundation for future shared logic); single usage site in dispatch + 4 smallest workflow comment/skeleton updates (parity, size reporting, separation, repro). All per smallest-viable + fmt+clippy clean.
+
 ## [Unreleased]
+
+### Area 2 first slice (Indexing & Update Pipeline toward 0.4.0)
+
+- `qmd update` functional (A): loads collections, walks with `discover_files`, reads+`upsert_document`, progress, graceful errors (with ~ expansion).
+- Improved `upsert_document` (B): transaction, `INSERT ... ON CONFLICT DO UPDATE` for stable ids + active, `created_at` fixes for FK/content, FTS resync for updates, best-effort `store_collections` touch.
+- Per-collection `ignore_patterns` / `ignore:` support (C): extended `CollectionCfg`, passed to `discover_files` (added to built-in ignores).
+- Minimal `qmd embed` stub wired (D): new handler + dispatch so it no longer hits "not implemented".
+- Integration test exercising update path end-to-end on temp dir + ignores (E).
+- All followed by `cargo fmt && cargo clippy -- -D warnings` (clean) + CHANGELOG.
+
+### Area 2 real embedding generation sub-slice (#1-#4, still toward 0.4.0)
+
+- (#1) Actual `LlamaEmbedder` (behind `llama-embed`): real GGUF loading via llama-cpp-2 (Metal on macOS), `embed_batch` producing non-zero vectors using the embeddings context + seq_ith path. Model from `QMD_EMBED_MODEL` or `models.embed` in config; helpful errors.
+- (#2) Proper fingerprinting: new `embedding_fingerprint(model, chunker, fmt_ver)` (blake3 short) stored in `content_vectors.embed_fingerprint`. `qmd embed` (and update --embed) now skips unchanged docs whose fp matches.
+- (#3) Basic vector search live: `vsearch` and `vec:` clauses in `query` now perform cosine similarity over stored vectors (in-memory, dedup-per-file, collection filter). Hybrid lex+vec uses simple RRF fusion. Reuses FtsHit + output paths.
+- (#4) `qmd update --embed` wired: after raw upsert, delegates to embed pipeline (which respects fingerprints for incremental work on new/changed chunks). Works with or without the feature (no-op when absent).
+- `cargo fmt && cargo clippy -- -D warnings` (and with `--features llama-embed`) clean. No new heavy deps for default builds. CHANGELOG + full impl summary written.
 
 ## [0.3.0] - 2026-05-24
 

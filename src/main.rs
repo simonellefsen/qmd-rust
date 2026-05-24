@@ -159,6 +159,14 @@ fn main() -> Result<()> {
             qmd::cli::commands::mcp::cmd_mcp(http, port, daemon)?;
         }
 
+        Some(Commands::Update { pull, embed }) => {
+            qmd::cli::commands::update::cmd_update(pull, embed)?;
+        }
+
+        Some(Commands::Embed { force, collection }) => {
+            qmd::cli::commands::embed::cmd_embed(force, collection)?;
+        }
+
         // This arm catches every command we have *declared* in the enum but have
         // not finished porting yet. The `..` means "I don't care about the fields".
         //
@@ -169,8 +177,6 @@ fn main() -> Result<()> {
         // Note: as of 0.3.0 Area 1 slice, `query` and `vsearch` are now wired (lex-only
         // path via structured parser + FTS5; vec/hyde give graceful note). See roadmap.
         Some(Commands::MultiGet { .. })
-        | Some(Commands::Update { .. })
-        | Some(Commands::Embed { .. })
         | Some(Commands::Context { .. })
         | Some(Commands::Bench { .. })
         | Some(Commands::Skills { .. })
@@ -185,8 +191,22 @@ fn main() -> Result<()> {
             eprintln!(
                 "\nSee AGENTS.md for porting status and how to contribute to the Rust version."
             );
-            std::process::exit(2);
+            // One small high-value usage of the new QmdError system (per proposal):
+            // set sticky exit code here instead of magic literal; finalize helper below
+            // will turn it into real process exit. (Future slices can migrate other arms.)
+            qmd::utils::set_exit_code(2);
         }
+    }
+
+    // Finalize any exit code staged via the atomic helpers (QmdError trait
+    // foundation prepared for later slices). This is the small main.rs
+    // integration point. For Rust newbies: after the big match, we check the
+    // Atomic global and exit early if a command path wanted a non-standard
+    // status (e.g. 2 for usage-like "not implemented yet"). Only atomics are
+    // exercised in this slice per the one-site rule.
+    let code = qmd::utils::finalize_exit_code();
+    if code != 0 {
+        std::process::exit(code);
     }
 
     Ok(())

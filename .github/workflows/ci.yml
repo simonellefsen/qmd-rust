@@ -11,6 +11,10 @@ env:
   RUST_BACKTRACE: 1
 
 jobs:
+  # Separation of concerns (build/test lanes vs. future behavioral parity):
+  # - "check", "test", "build", "macos" answer: "does it build and pass basic tests?"
+  # - Dedicated behavior/parity jobs (see parity-skeleton below) will answer:
+  #   "is behavior correct?" (vs reference impl). Keeps lanes focused + fast.
   check:
     name: Check + Format + Clippy
     runs-on: ubuntu-latest
@@ -68,6 +72,10 @@ jobs:
 
       - name: cargo build --release
         run: cargo build --release
+      # Binary size reporting (smallest step for future cargo-dist release tracking).
+      # `ls -l` here; later can post as PR comment or enforce budgets.
+      - name: Report binary size
+        run: ls -l target/release/qmd || true
 
   macos:
     name: Build (macOS)
@@ -99,3 +107,17 @@ jobs:
         with:
           name: qmd-linux-x86_64
           path: target/release/qmd
+
+  # parity-skeleton (behavioral comparison placeholder, smallest viable):
+  # Skeleton job + comments only. Intent: later run behavioral comparison of
+  # the Rust binary vs. reference implementation sources. Do not implement
+  # harness yet (5 lines or less rule). When real: would live in its own
+  # parity workflow or here under a "behavior" lane. Currently just a no-op
+  # placeholder so the separation philosophy is visible.
+  parity-skeleton:
+    name: Parity skeleton (behavior vs reference)
+    runs-on: ubuntu-latest
+    # needs: [build]   # when enabled
+    if: false  # placeholder; enable when >5-line harness exists
+    steps:
+      - run: echo "parity-skeleton placeholder (see job comments for intent)"
