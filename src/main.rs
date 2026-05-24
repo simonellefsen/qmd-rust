@@ -167,6 +167,14 @@ fn main() -> Result<()> {
             qmd::cli::commands::embed::cmd_embed(force, collection)?;
         }
 
+        Some(Commands::Context { action }) => {
+            qmd::cli::commands::cmd_context(action)?;
+        }
+
+        Some(Commands::Cleanup) => {
+            qmd::cli::commands::cmd_cleanup()?;
+        }
+
         // This arm catches every command we have *declared* in the enum but have
         // not finished porting yet. The `..` means "I don't care about the fields".
         //
@@ -177,10 +185,8 @@ fn main() -> Result<()> {
         // Note: as of 0.3.0 Area 1 slice, `query` and `vsearch` are now wired (lex-only
         // path via structured parser + FTS5; vec/hyde give graceful note). See roadmap.
         Some(Commands::MultiGet { .. })
-        | Some(Commands::Context { .. })
         | Some(Commands::Bench { .. })
         | Some(Commands::Skills { .. })
-        | Some(Commands::Cleanup)
         | Some(Commands::Skill { .. }) => {
             eprintln!("This command is not yet implemented in the Rust port.");
             eprintln!("During development, use the reference implementation:");

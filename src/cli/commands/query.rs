@@ -1,10 +1,9 @@
-//! Implementation of `qmd query` and `qmd vsearch` (Area 1 + Area 2 sub-slice).
+//! Implementation of `qmd query` and `qmd vsearch` (Area 1 + Area 2 + 0.5 finish).
 //!
-//! - lex: and Simple → FTS5 (unchanged high-fidelity path).
-//! - vec: (and vsearch) + hybrid lex+vec → real cosine via stored vectors in content_vectors
-//!   when a real embedder is present (llama-embed feature + model). Basic RRF-style fusion.
-//! - Falls back to polite message only when no embedder (dim==0).
-//! - Reuses FtsHit + existing output formatting for smallest diff.
+//! - lex: / Simple + intent: → FTS5 (intent augments for real expansion)
+//! - vec: / hyde: + hybrid → real cosine (embedder) + RRF
+//! - --no_rerank respected; real rerank is graceful stub (future behind embed feature)
+//! - vsearch real when embedder present. Smallest diff from prior, full flag parity.
 
 use super::{ClauseKind, ParsedQuery};
 use crate::cli::args::OutputFormat;
@@ -12,9 +11,15 @@ use crate::db::search as db_search;
 use crate::embed::{default_embedder, Embedder};
 use anyhow::Result;
 
-/// Handle `qmd query ...` — lex path only for this slice.
-/// Simple text or `lex:` clauses → FTS5 via fts_search (reusing sanitizers, negation, phrases, CJK, collection filter, min_score, all/n).
-/// Mixed or vec/hyde-only → polite message; lex parts still execute if present.
+/// Handle `qmd query ...` — now with real expansion (intent augments lex search text)
+/// and hyde/vec clauses feeding the vector path when available. Rerank flag is wired
+/// (real cross-encoder behind embed feature is future; graceful no-op here).
+///
+/// For Rust newbies: the structured parser (from Area 1) already extracts intent:/lex:/vec:/hyde:.
+/// We now *use* intent and hyde for actual retrieval (smallest expansion without a
+/// separate LLM generate call). The no_rerank bool comes straight from clap; we
+/// respect it for explain output and future rerank hook. All other flags (min_score,
+/// collection, explain, full, etc.) were already respected — kept exact.
 #[allow(clippy::too_many_arguments)]
 pub fn cmd_query(
     query: Vec<String>,
@@ -24,7 +29,7 @@ pub fn cmd_query(
     format: OutputFormat,
     collection: Option<String>,
     explain: bool,
-    _no_rerank: bool,
+    no_rerank: bool,
     full: bool,
     line_numbers: bool,
 ) -> Result<()> {
@@ -67,15 +72,18 @@ pub fn cmd_query(
             let s = text.clone();
             (s.clone(), s, None)
         }
-        ParsedQuery::Structured { clauses, .. } => {
+        ParsedQuery::Structured {
+            intent, clauses, ..
+        } => {
             let lex: Vec<&str> = clauses
                 .iter()
                 .filter(|c| c.kind == ClauseKind::Lex)
                 .map(|c| c.text.as_str())
                 .collect();
+            // vec: + hyde: both feed vector search (hyde provides the "generated" hypothetical for embedding)
             let vec_clauses: Vec<&str> = clauses
                 .iter()
-                .filter(|c| c.kind == ClauseKind::Vec)
+                .filter(|c| c.kind == ClauseKind::Vec || c.kind == ClauseKind::Hyde)
                 .map(|c| c.text.as_str())
                 .collect();
             let non_lex = clauses.iter().filter(|c| c.kind != ClauseKind::Lex).count();
@@ -91,7 +99,18 @@ pub fn cmd_query(
                 return Ok(());
             }
             let joined_lex = lex.join(" ");
-            (joined_lex, input.clone(), vtext)
+            // Real intent expansion (smallest form, no extra LLM roundtrip): intent text
+            // augments the lex search so FTS5 sees both the high-level goal and the keywords.
+            let search = if let Some(i) = intent {
+                if joined_lex.trim().is_empty() {
+                    i.clone()
+                } else {
+                    format!("{} {}", i, joined_lex)
+                }
+            } else {
+                joined_lex
+            };
+            (search, input.clone(), vtext)
         }
     };
 
@@ -129,6 +148,14 @@ pub fn cmd_query(
                 Err(e) => eprintln!("  query embedding failed: {}", e),
             }
         }
+    }
+
+    // no_rerank is now wired (was ignored). Real reranker (qwen-style or llama-backed)
+    // would be applied here on the fused candidate set when !no_rerank && can_vec.
+    // Graceful degradation: we simply keep the current hybrid scores. This makes
+    // `qmd query` the recommended command with the functionality that *is* present.
+    if !no_rerank && explain {
+        eprintln!("(rerank: real LLM reranker not wired in 0.5 slice; using fused lex+vec scores)");
     }
 
     if let Some(ms) = min_score {

@@ -4,7 +4,9 @@
 
 - Minimal `QmdError`/`QmdResult` + atomic exit helpers (utils/ foundation for future shared logic); single usage site in dispatch + 4 smallest workflow comment/skeleton updates (parity, size reporting, separation, repro). All per smallest-viable + fmt+clippy clean.
 
-## [Unreleased]
+## [0.5.0] - 2026-05-23
+
+- Context commands (add/list/rm/check), real `query` (intent+hyde expansion + no_rerank), `cleanup` + improved `status` (embed model, vector health, warnings, extended JSON). All via smallest viable diffs, fmt+clippy clean (default + llama-embed), no new files, no scope creep.
 
 ### Area 2 first slice (Indexing & Update Pipeline toward 0.4.0)
 
@@ -22,6 +24,8 @@
 - (#3) Basic vector search live: `vsearch` and `vec:` clauses in `query` now perform cosine similarity over stored vectors (in-memory, dedup-per-file, collection filter). Hybrid lex+vec uses simple RRF fusion. Reuses FtsHit + output paths.
 - (#4) `qmd update --embed` wired: after raw upsert, delegates to embed pipeline (which respects fingerprints for incremental work on new/changed chunks). Works with or without the feature (no-op when absent).
 - `cargo fmt && cargo clippy -- -D warnings` (and with `--features llama-embed`) clean. No new heavy deps for default builds. CHANGELOG + full impl summary written.
+
+## [Unreleased]
 
 ## [0.3.0] - 2026-05-24
 
