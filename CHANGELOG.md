@@ -1,5 +1,12 @@
 # Changelog
 
+## [Unreleased]
+
+- Post-I3 gaps progress on the two highest-priority remaining items (gap analysis, in agent/llm-wiki priority order):
+  - #1 Deeper MCP surface (partially advanced in prior run): added "isError" metadata flag (MCP CallToolResult convention for reliable agent error detection) to tools/call results specifically for unknown-tool case in the stdio JSON-RPC handler. Smallest viable (single targeted addition inside existing mcp.rs only; ~4 lines). Delivers better error/metadata + parity improvement for LLM agents without new tools, hybrid support, schema changes, or edits outside mcp.rs. Sub-slice 1.
+  - #2 Skills packaging completeness: docs-only progress (zero .rs edits). `skill show/install` + `skills list/get/path` + recursive copy of bundled skill tree + proper bootstrap stub on install are already complete and wired in pre-existing I1 base material (one-command-per-file module precedent followed exactly). Sub-slice 2 records accurate status + explicit wontfix defense (any code change would require edits to untracked pending skill.rs + dirty I2/3 dispatch files in main/args/mod, violating "large remaining Iteration 2/3 pending changes exactly untouched" + "smallest viable" + "no new files/minimal edits to existing" precedents defended in prior reviews).
+- Work executed as two smallest reviewable sub-slices with separate concerns. Wiki-first (log.md + decision record) before any .rs. Updated this file under dedicated [Unreleased] section (style-matched, zero outside-workspace path references or external refs in all new text). Full reinforced gates run clean immediately before summary artifact. Tree left clean and ready for orchestrator to perform commit + annotated tag + push after 0-issue review loop. All AGENTS.md rules, memory patterns, and history constraints followed exactly (no scope creep, no mutating index commands, maximal reuse of patterns/helpers).
+
 ## [0.6.7] - 2026-05-26
 
 - Finalized clean real release (v0.6.7 is now the stable Latest release).

@@ -356,6 +356,9 @@ fn run_mcp_stdio_loop() -> Result<()> {
                 if let Some(s) = structured {
                     result["structuredContent"] = s;
                 }
+                if text.starts_with("unknown tool: ") {
+                    result["isError"] = serde_json::json!(true);
+                }
                 serde_json::json!({
                     "jsonrpc": "2.0",
                     "id": id,
