@@ -4,7 +4,7 @@ tags:
   - qmd-rust/wiki
   - release
   - packaging
-updated: 2026-05-25
+updated: 2026-05-26
 ---
 
 # Release Process for QMD-Rust
@@ -142,6 +142,15 @@ The script is intentionally minimal (~100 lines) and meant to be reviewed before
 - ~~Update `flake.nix` to produce a proper package + improve the Home Manager module.~~ **Partially done** (dynamic version from Cargo.toml + future module stub; full HM module still welcome).
 - ~~Write a small install script that works without Homebrew/Nix (`curl ... | sh`).~~ **Done** — `install.sh` at repo root (see below for verification).
 - Keep the changelog discipline (Unreleased → versioned on release).
+- **Mandatory pre-release lint gate** (added after the v0.6.1 CI failure on `cargo fmt --all -- --check` for the multiline `.unwrap()` in `src/index/mod.rs:320` inside the hermetic test schema bootstrap): Immediately before any release commit, annotated tag, or push of a tag, the person (or orchestrator) performing the release **must** run and confirm zero output / exit 0:
+
+  ```sh
+  cargo fmt --all -- --check
+  cargo clippy -- -D warnings
+  cargo clippy --features llama-embed -- -D warnings
+  ```
+
+  Paste the output into the commit message or release notes. This is now non-negotiable release process hygiene (matches AGENTS.md "run fmt + clippy before committing").
 - **Manual follow-up (the 4 steps requested for first release)**: See the numbered checklist immediately below. These are the concrete actions to take *outside* this repo (GitHub UI + local git tag).
 
 ## First Real Release Checklist (the 1-4 steps + installer)

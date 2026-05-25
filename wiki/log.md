@@ -3,12 +3,20 @@ type: wiki-log
 tags:
   - qmd-rust/wiki
   - maintained-by-llm
-updated: 2026-05-25
+updated: 2026-05-26
 ---
 
 # QMD-Rust Wiki Log
 
 Append-only timeline of wiki maintenance. Headings use the format `## [YYYY-MM-DD] kind | summary` for easy parsing by agents and `grep`.
+
+## [2026-05-26] release | harden pre-release lint gate after v0.6.1 fmt regression
+
+- `cargo fmt --all -- --check` (and full clippy default + `--features llama-embed`) is now an explicit, mandatory, documented step in `wiki/runbooks/release.md` immediately before any release commit/tag/push.
+- Root cause of the 0.6.1 CI failure: multiline `conn.execute_batch(r#" ... "#,).unwrap();` in the hermetic test inside `src/index/mod.rs` (the schema bootstrap for `test_update_path_end_to_end_with_ignore_patterns`) was formatted in a style accepted by the developer's rustfmt but rejected by the GitHub runner's rustfmt (`.unwrap()` on same line vs. chained on next line).
+- Confirmed on current tree: `cargo fmt --all -- --check` + both clippy invocations exit 0 with no output.
+- This is the second release-process hygiene patch (after the cargo-dist `release.yml` reproducibility comment drift for the same v0.6.0/v0.6.1 series). Future releases (including any 0.6.3+) will not regress.
+- Updated runbook + this log entry + CHANGELOG note. No Rust source changes required (tree was already clean).
 
 ## [2026-05-25] release | v0.6.1 patch (version bump + annotated tag + push)
 
