@@ -10,6 +10,16 @@ updated: 2026-05-26
 
 Append-only timeline of wiki maintenance. Headings use the format `## [YYYY-MM-DD] kind | summary` for easy parsing by agents and `grep`.
 
+## [2026-05-26] release | v0.6.6 cleanup + v0.6.7 real release finalization (Homebrew publish success)
+
+- Seeded `simonellefsen/homebrew-qmd` with initial commit on `main` (required for first `publish-homebrew-formula` job — see new note in release runbook).
+- Re-ran failed `publish-homebrew-formula` job on run 26390323270; it succeeded and published the formula.
+- Deleted leftover `v0.6.6` test tag.
+- Added proper `## [0.6.7]` section to CHANGELOG.md.
+- Full pre-release gates run clean immediately before changes.
+- Wiki-first entry added before editing CHANGELOG.
+- v0.6.7 is now the clean "real" release with working Homebrew publishing.
+
 ## [2026-05-26] release | v0.6.6 tag plan failure (run 26390122069) + fix in progress
 
 - New cargo-dist "plan" failure on the v0.6.6 tag push: the Release workflow job `Run dist host --steps=create --tag=v0.6.6 --output-format=json` exited 255.

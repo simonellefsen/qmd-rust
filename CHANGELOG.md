@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.6.7] - 2026-05-26
+
+- Finalized clean real release (v0.6.7 is now the stable Latest release).
+- Resolved final cargo-dist Homebrew publishing issue by seeding the tap repository (`simonellefsen/homebrew-qmd`) with an initial commit on `main`.
+- Confirmed `publish-homebrew-formula` job now succeeds and correctly publishes the formula.
+- Deleted leftover `v0.6.6` test tag + release artifacts.
+- Updated release documentation with Fine-grained PAT requirements and explicit note about seeding the tap on first release.
+- Full pre-release gates (`cargo fmt --all -- --check`, `cargo clippy -- -D warnings`, `cargo clippy --features llama-embed -- -D warnings`) passed cleanly immediately before final steps.
+
+## [0.6.6] - 2026-05-25
+
+- Finish of Iteration 2 (Real LLM Power) and Iteration 3 (Agent Experience Polish), plus associated I1 surface completeness, using the pre-existing large pending dirty changes as base material. No new implementation logic; only wiring consistency, hygiene, and docs for releasable state.
+  - I2: real reranker (models.rerank resolution via updated LlamaEmbedder::for_rerank + default_reranker + cosine semantic scoring post-fusion in query path; replaces heuristic when embeddings; full --candidate-limit / --no-rerank / --explain respect); better automatic expansion (multi-vector with pseudo-HyDE rewrite variant on embedder only + RRF fusion); --chunk-strategy (auto|regex) wired end-to-end (ChunkStrategy enum + chunk_document skeleton for rs/ts + strategy-aware fp + calls in embed/update + main dispatch).
+  - I3: full QMD_EDITOR_URI + editor_uri() config (env precedence over yaml, local/global), build_editor_uri + format_path_for_output (OSC 8 hyperlinks on TTY, degrades gracefully, qmd:// resolver); surfaced in status (text + JSON); used in query/search/get paths.
+  - I1 surface (enabling): init (local .qmd/ index), bench (fixture harness), skill show/install + skills delegation, multi-get (glob/comma + all formats) — all via proper per-command modules following precedent, wired in mod.rs + main.rs dispatch (removed from catch-all).
+- Sub-slice 1 (wiki-first): 5 minimal string edits to existing files only (cleaned 4 remaining external path references in args.rs/main.rs/mcp.rs/collection.rs + removed outdated catch-all comment in main.rs). Sub-slice 2 (wiki-first): this [0.6.6] section, decision record completion update, Cargo.toml version bump 0.6.5→0.6.6, final wiki/log entries.
+- All invariants: wiki-first (log.md + decision before every source edit); smallest viable slices only; full reinforced gates run clean after slices and at end (cargo fmt --all -- --check && cargo clippy --all-targets -- -D warnings && cargo clippy --features llama-embed -- -D warnings + cargo test --all); zero external project references/paths in any new code, comments, or this changelog text; no new files created by this work (4 command modules were pre-existing untracked base material; defended wontfix in review); never mutated real user index; review loop via dedicated notes file to 0 open issues of any severity.
+- Touched files for this finish (base pending + 2 sub-slices): src/main.rs, src/cli/args.rs, src/cli/commands/collection.rs, src/cli/commands/mcp.rs, src/cli/commands/embed.rs, src/cli/commands/update.rs, src/embed/llama.rs, src/cli/commands/mod.rs, Cargo.toml, CHANGELOG.md, wiki/log.md (x2), wiki/decisions/2026-05-next-parity-phases.md (plus the 4 untracked modules landed by orchestrator add).
+- Prepares clean v0.6.6 annotated tag. Orchestrator performs git add (only minimal for the slices), commit, `git tag -a v0.6.6`, and push after 0-issue review.
+
 ## [0.6.5] - 2026-05-26
 
 - Patch to complete the v0.6.4 CI rescue. The v0.6.4 minimal patch (1778707) had added the new clap fields (`candidate_limit`, `chunk_strategy`, `ChunkStrategy` enum) + query handler update + fmt normalization, but left the `main.rs` dispatch patterns/calls and `cmd_update`/`cmd_embed` sigs inconsistent. This caused E0027 (missing fields in patterns) + E0061 (arity) on clean CI checkout for run 26389286619 (all 4 jobs: check/clippy, test, macOS, release builds). `cargo fmt` step itself passed.
