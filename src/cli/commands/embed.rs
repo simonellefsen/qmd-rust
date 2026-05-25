@@ -1,22 +1,23 @@
-//! `qmd embed` implementation — real embedding generation (Area 2 sub-slice #1-#4).
+//! `qmd embed` implementation — real embedding generation (Area 2 sub-slice #1-#4 + I2 chunk).
 //!
 //! Uses the pluggable `Embedder` trait. When the `llama-embed` feature is enabled,
 //! `LlamaEmbedder` loads a real GGUF model (via QMD_EMBED_MODEL or config) and
 //! produces meaningful vectors. Fingerprinting (`embedding_fingerprint`) + early
 //! COUNT check enables skip-on-match for unchanged content (cheap repeated runs).
-//! The discovery → chunk → (fp-gated) embed → store pipeline is fully exercised.
+//! The discovery → chunk (now strategy-aware: --chunk-strategy auto uses skeleton for rs/ts) → (fp-gated) embed → store pipeline is fully exercised.
 //! Called by `qmd embed` and by `qmd update --embed`.
 
+use crate::cli::args::ChunkStrategy;
 use crate::db::load_config;
 use crate::embed;
 use crate::embed::Embedder;
-use crate::index::{discover_files, simple_chunk, store_vectors};
+use crate::index::{chunk_document, discover_files, store_vectors};
 use anyhow::Result;
 
 pub fn cmd_embed(
     force: bool,
     collection: Option<String>,
-    _chunk_strategy: crate::cli::args::ChunkStrategy,
+    chunk_strategy: ChunkStrategy,
 ) -> Result<()> {
     let embedder: Box<dyn Embedder> = embed::default_embedder();
     let model = embedder.model_id().to_string();
@@ -44,6 +45,16 @@ pub fn cmd_embed(
 
     let mut total_chunks = 0;
 
+    let strategy_str = match chunk_strategy {
+        ChunkStrategy::Auto => "auto",
+        _ => "regex",
+    };
+    let chunker_token = if strategy_str == "auto" {
+        crate::index::EMBED_CHUNKER_TOKEN_AUTO
+    } else {
+        crate::index::EMBED_CHUNKER_TOKEN_REGEX
+    };
+
     for (name, coll_cfg) in targets {
         println!("Embedding collection '{}' ...", name);
 
@@ -65,7 +76,7 @@ pub fn cmd_embed(
             let hash = crate::index::content_hash(&content);
             let fingerprint = crate::index::embedding_fingerprint(
                 &model,
-                crate::index::EMBED_CHUNKER_TOKEN,
+                chunker_token,
                 crate::index::EMBED_FMT_VER,
             );
 
@@ -94,7 +105,12 @@ pub fn cmd_embed(
                 let _ = conn.execute("DELETE FROM content_vectors WHERE hash = ?1", [&hash]);
             }
 
-            let chunks = simple_chunk(&content, 800);
+            let chunks = chunk_document(
+                &content,
+                strategy_str,
+                800,
+                Some(path.to_str().unwrap_or("")),
+            );
             if chunks.is_empty() {
                 continue;
             }

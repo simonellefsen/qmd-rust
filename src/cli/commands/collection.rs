@@ -60,9 +60,7 @@ pub fn cmd_collection(action: CollectionAction) -> Result<()> {
                 let root_map = match v.as_mapping_mut() {
                     Some(m) => m,
                     None => {
-                        eprintln!(
-                            "invalid config root in ~/.config/qmd/index.yml (expected mapping)"
-                        );
+                        eprintln!("invalid config root (expected mapping)");
                         std::process::exit(1);
                     }
                 };
@@ -87,7 +85,7 @@ pub fn cmd_collection(action: CollectionAction) -> Result<()> {
                     m.insert(key, serde_yaml::Value::Mapping(entry));
                 }
             }
-            eprintln!("Warning: collection mutation rewrites YAML and strips comments (use /opt/homebrew/bin/qmd for comment-preserving edits).");
+            eprintln!("Warning: collection mutation rewrites YAML and strips comments (use the reference implementation for comment-preserving edits if needed).");
             save_config_value(&v)?;
 
             // keep store_collections in sync (no full index, just metadata)
@@ -101,7 +99,7 @@ pub fn cmd_collection(action: CollectionAction) -> Result<()> {
             println!("✓ Collection '{}' added (qmd://{}/)", coll_name, coll_name);
             println!("  Path: {}", resolved);
             println!("  Pattern: {}", pattern);
-            println!("  Note: files not indexed yet. Use /opt/homebrew/bin/qmd update (or Node collection add) for indexing.");
+            println!("  Note: files not indexed yet. Use `qmd update` (or the reference implementation) for indexing.");
         }
         CollectionAction::Remove { name } => {
             let mut v = load_config_value()?;
@@ -119,7 +117,7 @@ pub fn cmd_collection(action: CollectionAction) -> Result<()> {
                 eprintln!("Collection not found: {}", name);
                 std::process::exit(1);
             }
-            eprintln!("Warning: collection mutation rewrites YAML and strips comments (use /opt/homebrew/bin/qmd for comment-preserving edits).");
+            eprintln!("Warning: collection mutation rewrites YAML and strips comments (use the reference implementation for comment-preserving edits if needed).");
             save_config_value(&v)?;
 
             let deact = if let Ok(conn) = open_connection(false) {
@@ -164,7 +162,7 @@ pub fn cmd_collection(action: CollectionAction) -> Result<()> {
                 eprintln!("Collection not found: {}", old);
                 std::process::exit(1);
             }
-            eprintln!("Warning: collection mutation rewrites YAML and strips comments (use /opt/homebrew/bin/qmd for comment-preserving edits).");
+            eprintln!("Warning: collection mutation rewrites YAML and strips comments (use the reference implementation for comment-preserving edits if needed).");
             save_config_value(&v)?;
 
             if let Ok(conn) = open_connection(false) {

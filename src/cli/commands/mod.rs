@@ -7,15 +7,19 @@
 //! Shared path/FS helpers for ls/get/mcp (and now context) live here (pub(crate)
 //! so submodules can `use super::` them).
 
+pub mod bench; // Iteration 1: basic harness (exercises search paths)
 pub mod cleanup; // extracted in fix round (review #1)
 pub mod collection;
 pub mod context; // extracted in fix round (review #1)
 pub mod embed;
 pub mod get;
+pub mod init; // Iteration 1: project-local index (smallest viable)
 pub mod ls;
 pub mod mcp;
+pub mod multi_get; // dedicated module (smallest viable for CLI parity slice)
 pub mod query;
 pub mod search;
+pub mod skill; // Iteration 1: show/install + skills delegation (smallest)
 pub mod status;
 pub mod update; // Area 2 first slice (update + embed stub)
 

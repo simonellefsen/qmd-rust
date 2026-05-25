@@ -64,12 +64,28 @@ impl LlamaEmbedder {
         }
     }
 
-    /// Minimal stub so `default_reranker()` (and the feature-gated rerank path
-    /// in query) compiles when the `llama-embed` feature is enabled.
-    /// The real for_rerank (separate rerank model, cosine post-fusion, etc.)
-    /// is part of the larger pending Iteration 2 work and will overlay this.
+    /// Construct an embedder instance that prefers a rerank model (for I2 real reranker).
+    /// Resolution order: QMD_RERANK_MODEL env, then models.rerank in config,
+    /// then falls back to the regular embed resolution (Self::new).
+    /// This wires `models.rerank` into the query rerank path with smallest diff
+    /// (reuses all load/embed logic; no duplicated default path strings).
     pub fn for_rerank() -> Self {
-        Self::new()
+        let rerank_spec = std::env::var("QMD_RERANK_MODEL").ok().or_else(|| {
+            load_config()
+                .ok()
+                .and_then(|cfg| cfg.models.and_then(|m| m.rerank))
+        });
+        if let Some(spec) = rerank_spec {
+            let model_id = format!("rerank:{}", spec);
+            Self {
+                model_path: spec,
+                model_id,
+                real_dimension: std::sync::OnceLock::new(),
+            }
+        } else {
+            // Fallback reuses embed path (and its resolution) exactly.
+            Self::new()
+        }
     }
 
     fn resolve_model_path(&self) -> Result<PathBuf> {

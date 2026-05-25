@@ -59,7 +59,7 @@ fn main() -> Result<()> {
             println!(
                 "Primary: qmd query <q> | search <q> | vsearch <q> | get <file> | status | mcp"
             );
-            println!("Reference Node binary still available for full functionality during port: /opt/homebrew/bin/qmd");
+            println!("(Node reference binary available for comparison if installed.)");
         }
 
         Some(Commands::Status { json }) => {
@@ -67,12 +67,7 @@ fn main() -> Result<()> {
         }
 
         Some(Commands::Init { force }) => {
-            eprintln!("`qmd init` (project-local index) is not yet implemented in Rust.");
-            eprintln!("Reference: /opt/homebrew/bin/qmd init");
-            eprintln!("(Creates .qmd/ with local index.sqlite for this directory's wiki.)");
-            if force {
-                eprintln!("(force flag noted)");
-            }
+            qmd::cli::commands::init::cmd_init(force)?;
         }
 
         Some(Commands::Collection { action }) => {
@@ -90,6 +85,15 @@ fn main() -> Result<()> {
             line_numbers,
         }) => {
             qmd::cli::commands::get::cmd_get(file, l, full, line_numbers)?;
+        }
+
+        Some(Commands::MultiGet {
+            pattern,
+            l,
+            max_bytes,
+            format,
+        }) => {
+            qmd::cli::commands::multi_get::cmd_multi_get(pattern, l, max_bytes, format)?;
         }
 
         Some(Commands::Search {
@@ -185,32 +189,18 @@ fn main() -> Result<()> {
             qmd::cli::commands::cleanup::cmd_cleanup()?;
         }
 
-        // This arm catches every command we have *declared* in the enum but have
-        // not finished porting yet. The `..` means "I don't care about the fields".
-        //
-        // During the port this is the polite way to tell the user (or an LLM agent)
-        // "please use the mature Node version for this operation for now".
-        // Once a command is implemented, you move its arm *above* this catch-all.
-        //
-        // Note: as of 0.3.0 Area 1 slice, `query` and `vsearch` are now wired (lex-only
-        // path via structured parser + FTS5; vec/hyde give graceful note). See roadmap.
-        Some(Commands::MultiGet { .. })
-        | Some(Commands::Bench { .. })
-        | Some(Commands::Skills { .. })
-        | Some(Commands::Skill { .. }) => {
-            eprintln!("This command is not yet implemented in the Rust port.");
-            eprintln!("During development, use the reference implementation:");
-            eprintln!(
-                "  /opt/homebrew/bin/qmd {}",
-                std::env::args().nth(1).unwrap_or_default()
-            );
-            eprintln!(
-                "\nSee AGENTS.md for porting status and how to contribute to the Rust version."
-            );
-            // One small high-value usage of the new QmdError system (per proposal):
-            // set sticky exit code here instead of magic literal; finalize helper below
-            // will turn it into real process exit. (Future slices can migrate other arms.)
-            qmd::utils::set_exit_code(2);
+        // All Commands variants declared in cli/args.rs now have dedicated dispatch arms
+        // (I1 surface completeness + I2/I3 features fully wired). No catch-all remains.
+        Some(Commands::Bench { fixture }) => {
+            qmd::cli::commands::bench::cmd_bench(fixture)?;
+        }
+
+        Some(Commands::Skills { action }) => {
+            qmd::cli::commands::skill::cmd_skills(action)?;
+        }
+
+        Some(Commands::Skill { action }) => {
+            qmd::cli::commands::skill::cmd_skill(action)?;
         }
     }
 

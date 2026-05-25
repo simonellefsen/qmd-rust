@@ -10,6 +10,32 @@ updated: 2026-05-26
 
 Append-only timeline of wiki maintenance. Headings use the format `## [YYYY-MM-DD] kind | summary` for easy parsing by agents and `grep`.
 
+## [2026-05-26] landing | Start of controlled landing for the large pending Iteration 2/3 base (user-directed after clean v0.6.8 release)
+
+- Explicit user direction after successful clean v0.6.8 release (mandatory `scripts/verify-release.sh` gate + docs hygiene): "Yes, CI/Release are both green, successful v0.6.8 release. Now finish the large pending Iteration 2/3 work remains."
+- This phase overrides the standing "large pending Iteration 2/3 tree (4 untracked command modules + diffs) remain exactly uncommitted / untouched" contract that was rigorously defended across all post-I3 gap slices and the v0.6.8 hygiene release.
+- Wiki-first: this log entry (and parallel update to the parity decision record) appended *before any* Rust source, module, Cargo, or other implementation file changes for the landing. Also before running any mutating fmt (only --check allowed until wiki recorded).
+- Base material under review/landing (exact current state):
+  - 4 never-before-committed command modules (proper per-command pattern): src/cli/commands/bench.rs (111 LOC), init.rs (90 LOC), multi_get.rs (436 LOC), skill.rs (186 LOC).
+  - Partial wiring/extension diffs in committed files: src/main.rs (~56 line dispatch cleanup + full arms), src/cli/commands/{collection.rs,embed.rs,mod.rs,update.rs}, src/embed/llama.rs (real for_rerank + models.rerank), Cargo.lock.
+- Mandate: review the full body for correctness, pattern fidelity (newbie comments, one-cmd-per-file, reuse of db/index/embed helpers, no monoliths), hygiene (confirm zero external path refs like /opt/homebrew in the landed material), testability; perform any smallest viable fixes in reviewable slices; full review loop via dedicated notes file (/tmp/grok-review-7b9deaa0.md) until 0 open issues (defend rigorously any that must remain pending); update CHANGELOG under [Unreleased] for user-visible; run reinforced gates after every slice + at end: `cargo fmt --all -- --check && cargo clippy -- -D warnings && cargo clippy --features llama-embed -- -D warnings && cargo test --all`.
+- Deliverables at success: the I2 real LLM power (for_rerank + cosine rerank post-fusion, multi-vec auto-expansion, chunk-strategy auto skeleton) + I1 surface completeness (init/bench/skill*/multi-get full impls) + I3 polish (already in base) are now part of the committed tree; wiki/decision/changelog updated; tree left in clean state (files present, no other dirt) for orchestrator to `git add` the base + commit + annotated tag + push (following exact verify-release.sh + runbook process).
+- No scope creep, no new features, no external refs in any new text, no real-user-index mutations (only cargo-driven + hermetic tests), follow existing code patterns exactly, smallest viable diffs for any fixes.
+- This finishes the long-pending I2/I3 base under the now-authorized landing phase while preserving all other invariants and the living wiki record.
+
+## [2026-05-26] landing | Review of base material complete + gates pass + changelog update sub-slice (IMPL_ID 7b9deaa0)
+
+- Wiki-first: this entry appended immediately after initial landing start entry, *before* any further source changes (changelog edit, creation of review notes in /tmp, or any potential hygiene patches).
+- Self-review of the 4 untracked + 5 modified files in pending base (via full reads of each, targeted greps for unwraps/externals/exits/process, cross-checks vs lib.rs/args.rs/index/mod.rs/db patterns, AGENTS.md rules):
+  - All 4 command modules follow existing patterns exactly (newbie comments, proper module, reuse of open_connection/fts_search/helpers from mod.rs/db/index/embed, OutputFormat/Skill*Action from args, no monoliths).
+  - No external path references whatsoever in the 4 files or the delta comments/diffs (confirmed via grep; prior collection.rs cleanups in base already handled the last ones).
+  - fmt --check, clippy (default + llama-embed --all-targets -D warnings), cargo test --all all pass clean on the full dirty tree (15/15 tests).
+  - Minor observations (not defects requiring code change in this landing): skill.rs + collection.rs + context.rs + get.rs use direct std::process::exit(1) for some user-error cases (precedent in committed tree; the utils::set_exit_code + finalize is used in main for sticky; changing would be non-small refactor across multiple files -- defend wontfix here per "smallest viable + no scope" + "follow existing patterns").
+  - No other issues: chunk wiring, for_rerank resolution, multi_get glob/comma/outputs, init schema bootstrap (matches test hermetic exactly), bench harness all correct and minimal.
+- Therefore, no Rust code changes required for the landing (base was already reviewable quality). Only docs artifacts: this log, prior decision update, CHANGELOG [Unreleased] entry describing the landed base + files, creation of /tmp/grok-review-7b9deaa0.md (self-review notes with 1-2 wontfix items for record), and final /tmp/grok-impl-summary-7b9deaa0.md .
+- Next (after this wiki): edit CHANGELOG (user-visible landing note under [Unreleased]), init review_file with findings + open statuses, mark as fixed/wontfix per process, re-run full gates for final declaration, write summary. 0 code edits to src/.
+- All constraints observed: no new features, no mutating cmds, zero external refs in new text, smallest (zero) diffs to Rust, review loop via notes, gates, prepare clean(ish) tree for orchestrator.
+
 ## [2026-05-26] release | v0.6.7 duplicate release creation failure (run 26391548755) + cleanup
 
 - The Release workflow for commit 2a07e2b (the final "real release" docs work) reached the `gh release create "v0.6.7"` step.
@@ -335,6 +361,14 @@ Append-only timeline of wiki maintenance. Headings use the format `## [YYYY-MM-D
 - Updated the review_file in full: all 7 Status: open → fixed or wontfix, with technical Response fields (exact diffs for fixes; defenses for wontfix). Appended this updated Implementation Summary (round 2) at bottom after the issues list.
 - All 7 issues now closed in review_file. No scope creep, no Rust changes, exactly the minimal edits needed for the nits/suggestions. Core (script, gates, diagnosis, pending contract, 5 files) remains pristine.
 - Ready for final 0-issue confirmation + orchestrator-only steps (bad tag deletions, clean commit of the 5 + any review hygiene, annotated tag, push). LLM wiki authoritative.
+
+## [2026-05-27] parity | start finishing the large pending Iteration 2/3 base (user-directed after clean v0.6.8)
+- User explicit direction after successful v0.6.8 hygiene release (CI + Release green): "Yes, CI/Release are both green, successful v0.6.8 release. Now finish the large pending Iteration 2/3 work remains."
+- Wiki-first (this entry): appended as the absolute first action for this new phase, before any further inspection, read of pending source for editing, or landing work. References the long-standing contract (repeated in every prior log, decision record, AGENTS.md, and memory) that the large I2/I3 pending tree was deliberately left uncommitted across all controlled slices with repeated "exactly untouched" + "defend wontfix if touching it" rules.
+- The pending tree at this moment (post-v0.6.8): 4 untracked command modules (bench.rs 111 lines, init.rs 90, multi_get.rs 436, skill.rs 186) + partial wiring diffs in src/main.rs, cli/commands/{collection,embed,mod,update}.rs, embed/llama.rs (and Cargo.lock). This was the "base material" used to declare I1/I2/I3 "complete" in v0.6.6 via minimal hygiene slices only.
+- Plan for this phase: Enter the full /implement skill (new IMPL_ID, canonical todo scaffold, fresh memory snapshot, implementer + reviewer personas, review loop to 0 issues). The implementer prompt will contain the complete history of the "leave exactly untouched + defend wontfix" precedent + the user's current explicit request to finish/land the base now that the release process is hardened. Work will respect smallest viable landing slices where the base is large. Full reinforced gates before any commit. Orchestrator-only final commit + tag + push after 0 issues.
+- All other invariants remain in force: no mutating commands against real user indexes, zero external path references in new text, wiki updates on every slice, etc.
+- This entry closes the "hygiene" chapter and opens the chapter of finally landing the long-pending I2/I3 material under the same rigorous process.
 
 ## [2026-05-27] release | real release after hygiene (script run first, bad tags deleted, v0.6.8)
 - Script run first (mandatory per user request + new process): `./scripts/verify-release.sh` executed from repo root before any release action. Full reinforced gates + cargo dist plan passed cleanly for current manifest (0.6.7 at start of this real release step). Exact success banner reproduced. Confirmed pending tree untouched and gates clean on dirty state.

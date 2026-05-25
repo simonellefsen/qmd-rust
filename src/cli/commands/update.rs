@@ -5,18 +5,13 @@
 //! - Inserting raw content + metadata
 //! - (Vectors will come in a later slice of this area)
 
+use crate::cli::args::ChunkStrategy;
 use crate::db::{expand_tilde, load_config};
 use crate::index::{discover_files, upsert_document};
 use anyhow::Result;
 
-/// Handle `qmd update [--pull] [--embed] [--chunk-strategy <strategy>]`
-/// chunk_strategy is accepted for CLI parity and future strategy-aware chunking
-/// (real selection + auto AST paths land in controlled later slice).
-pub fn cmd_update(
-    pull: bool,
-    embed: bool,
-    chunk_strategy: crate::cli::args::ChunkStrategy,
-) -> Result<()> {
+/// Handle `qmd update [--pull] [--embed] [--chunk-strategy]`
+pub fn cmd_update(pull: bool, embed: bool, chunk_strategy: ChunkStrategy) -> Result<()> {
     if pull {
         eprintln!("Note: --pull is not yet implemented in Rust (use the reference binary or run git pull manually).");
     }
