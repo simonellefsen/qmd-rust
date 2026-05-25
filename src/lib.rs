@@ -17,12 +17,14 @@ pub mod index; // Area 2: file discovery + indexing (update/embed)
 pub mod utils;
 
 pub use cli::args::{
-    Cli, CollectionAction, Commands, ContextAction, OutputFormat, SkillAction, SkillsAction,
+    ChunkStrategy, Cli, CollectionAction, Commands, ContextAction, OutputFormat, SkillAction,
+    SkillsAction,
 };
 pub use cli::commands; // command handlers (cmd_status, cmd_search, etc.) for dispatch and reuse
 pub use db::{
-    db_counts, expand_tilde, get_collection_stats, last_updated_hint, load_config,
-    load_config_value, open_connection, save_config_value,
+    active_config_path, active_db_path, build_editor_uri, db_counts, editor_uri, expand_tilde,
+    format_path_for_output, get_collection_stats, last_updated_hint, load_config,
+    load_config_value, open_connection, resolve_document_fs_path, save_config_value,
     search::{build_fts5_query, fts_search, vec_search, FtsHit},
-    CollectionCfg, ModelsCfg, QmdConfig,
+    stdout_is_tty, CollectionCfg, ModelsCfg, QmdConfig,
 };

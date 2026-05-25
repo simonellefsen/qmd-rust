@@ -3,6 +3,7 @@
 //! Retrieves document by #docid, qmd:// path, collection/path, or falls back to filesystem.
 //! Supports -l N, --full, --line-numbers.
 
+use crate::db::format_path_for_output;
 use crate::db::open_connection;
 use anyhow::Result;
 use std::env;
@@ -70,7 +71,10 @@ pub fn cmd_get(file: String, l: Option<usize>, full: bool, line_numbers: bool) -
         };
         match fs::read_to_string(&fs_path) {
             Ok(s) => {
-                println!("(read from disk: {})", fs_path);
+                // Iteration 3: make the disk-fallback path clickable in TTY via same formatter.
+                // Use the :NN suffix already parsed into start_line (for this get input only).
+                let p = format_path_for_output(&fs_path, Some(start_line as u32), Some(1));
+                println!("(read from disk: {})", p);
                 s
             }
             Err(_) => {

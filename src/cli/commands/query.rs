@@ -1,12 +1,14 @@
-//! Implementation of `qmd query` and `qmd vsearch` (Area 1 + Area 2 + 0.5 finish).
+//! Implementation of `qmd query` and `qmd vsearch` (Area 1 + Area 2 + 0.5 finish + I2).
 //!
 //! - lex: / Simple + intent: → FTS5 (intent augments for real expansion)
 //! - vec: / hyde: + hybrid → real cosine (embedder) + RRF
-//! - --no_rerank respected; real rerank is graceful stub (future behind embed feature)
-//! - vsearch real when embedder present. Smallest diff from prior, full flag parity.
+//! - Better auto expansion (I2): plain + structured now auto-hybrid + multi-vector (original + pseudo-HyDE rewrite) when embedder present — reuses existing embedder infra only (no gen scaffolding).
+//! - Real reranker (I2): after fusion, if embeddings, use embedder-driven semantic (cosine on query vs passage) as reranker when models.rerank (or fallback embed) present via llama path; falls to heuristic otherwise. Respects --no-rerank, --candidate-limit, --explain. Actually reorders on real model signals.
+//! - --no_rerank / candidate_limit respected; vsearch real when embedder present. Smallest diff, full flag parity.
 
 use super::{ClauseKind, ParsedQuery};
 use crate::cli::args::OutputFormat;
+use crate::db::format_path_for_output;
 use crate::db::search as db_search;
 use crate::embed::{default_embedder, Embedder};
 use anyhow::Result;
@@ -18,8 +20,8 @@ use anyhow::Result;
 /// For Rust newbies: the structured parser (from Area 1) already extracts intent:/lex:/vec:/hyde:.
 /// We now *use* intent and hyde for actual retrieval (smallest expansion without a
 /// separate LLM generate call). The no_rerank bool comes straight from clap; we
-/// respect it for explain output and future rerank hook. All other flags (min_score,
-/// collection, explain, full, etc.) were already respected — kept exact.
+/// respect it for explain output and future rerank hook. candidate_limit caps
+/// expensive real rerank (I2). All other flags kept exact.
 #[allow(clippy::too_many_arguments)]
 pub fn cmd_query(
     query: Vec<String>,
@@ -30,6 +32,7 @@ pub fn cmd_query(
     collection: Option<String>,
     explain: bool,
     no_rerank: bool,
+    candidate_limit: usize,
     full: bool,
     line_numbers: bool,
 ) -> Result<()> {
@@ -70,7 +73,12 @@ pub fn cmd_query(
     let (search_text, display_for_empty, vec_clause_text) = match &parsed {
         ParsedQuery::Simple(text) => {
             let s = text.clone();
-            (s.clone(), s, None)
+            // Basic automatic expansion (smallest viable): when embedder available, treat the
+            // plain query text itself as the vec input. This makes `qmd query` automatically
+            // hybrid (lex + vec) for the common case — biggest usability win for the recommended
+            // command while only touching the existing embedder path. No LLM generate yet.
+            let vtext = if can_vec { Some(s.clone()) } else { None };
+            (s.clone(), s, vtext)
         }
         ParsedQuery::Structured {
             intent, clauses, ..
@@ -90,11 +98,16 @@ pub fn cmd_query(
             if non_lex > 0 && !can_vec {
                 eprintln!("Vector/HyDE search requires embeddings (build with `llama-embed` feature + set QMD_EMBED_MODEL).");
             }
-            let vtext = if !vec_clauses.is_empty() {
+            let mut vtext = if !vec_clauses.is_empty() {
                 Some(vec_clauses[0].to_string())
             } else {
                 None
             };
+            // Auto vec expansion for lex-only structured queries (or intent+lex) when embeddings present.
+            // Reuses embedder exactly; keeps `qmd query` as the single recommended entry point.
+            if vtext.is_none() && can_vec && (!lex.is_empty() || intent.is_some()) {
+                vtext = Some(input.clone());
+            }
             if lex.is_empty() && vtext.is_none() {
                 return Ok(());
             }
@@ -124,38 +137,94 @@ pub fn cmd_query(
         vec![]
     };
 
-    // Vec path (when available and requested)
+    // Vec path (when available and requested) + I2 better auto-expansion:
+    // reuse embedder for primary + one pseudo-HyDE variant (no generate scaffolding).
+    // Multiple vec searches + RRF gives richer expansion than plain text-as-vec alone.
     if let Some(vtext) = &vec_clause_text {
         if can_vec {
-            // Format like original for query embeddings (best-effort fidelity for this slice)
-            let formatted = format!("task: search result | query: {}", vtext);
-            match embedder.embed_batch(&[formatted.as_str()]) {
-                Ok(vs) if !vs.is_empty() => {
-                    let qv = &vs[0];
-                    match db_search::vec_search(qv, lim, coll) {
-                        Ok(vhits) => {
-                            if hits.is_empty() {
-                                hits = vhits;
-                            } else if !vhits.is_empty() {
-                                // Basic RRF fusion for hybrid lex + vec results (#3)
-                                hits = fuse_rrf(hits, vhits);
+            let mut vtexts: Vec<String> = vec![vtext.clone()];
+            // Better expansion: add a cheap pseudo-HyDE rewrite (still embedder only).
+            // This produces a second vector signal for the same intent, fused below.
+            if vtext == &input || vtext.starts_with(&input) {
+                vtexts.push(format!("hypothetical document that answers: {}", vtext));
+            }
+            for (i, vt) in vtexts.iter().enumerate() {
+                let formatted = format!("task: search result | query: {}", vt);
+                match embedder.embed_batch(&[formatted.as_str()]) {
+                    Ok(vs) if !vs.is_empty() => {
+                        let qv = &vs[0];
+                        match db_search::vec_search(qv, lim, coll) {
+                            Ok(vhits) => {
+                                if hits.is_empty() && i == 0 {
+                                    hits = vhits;
+                                } else if !vhits.is_empty() {
+                                    hits = fuse_rrf(hits, vhits);
+                                }
                             }
+                            Err(e) => eprintln!("  vec search failed: {}", e),
                         }
-                        Err(e) => eprintln!("  vec search failed: {}", e),
                     }
+                    Ok(_) => {}
+                    Err(e) => eprintln!("  query embedding failed: {}", e),
                 }
-                Ok(_) => {}
-                Err(e) => eprintln!("  query embedding failed: {}", e),
             }
         }
     }
 
-    // no_rerank is now wired (was ignored). Real reranker (qwen-style or llama-backed)
-    // would be applied here on the fused candidate set when !no_rerank && can_vec.
-    // Graceful degradation: we simply keep the current hybrid scores. This makes
-    // `qmd query` the recommended command with the functionality that *is* present.
-    if !no_rerank && explain {
-        eprintln!("(rerank: real LLM reranker not wired in 0.5 slice; using fused lex+vec scores)");
+    // Real reranker (I2) integrated after fusion: model-driven semantic via existing
+    // embedder path (loads from models.rerank if configured, else embed fallback).
+    // Scores candidates with cosine(query_embed, passage_embed). Replaces heuristic
+    // when vec available (meaningful reorder on real data). Respects --no-rerank,
+    // --candidate-limit (cap before costly per-cand embeds), --explain.
+    // Fallback to heuristic when no embedder.
+    if !no_rerank {
+        let use_real = can_vec;
+        if use_real {
+            let cap = candidate_limit.max(1);
+            let mut cands: Vec<_> = hits.clone().into_iter().take(cap).collect();
+            if !cands.is_empty() {
+                // Use dedicated reranker embedder (prefers models.rerank via config/env)
+                let rer_emb: Box<dyn Embedder> = crate::embed::default_reranker();
+                let qfmt = format!("task: search result | query: {}", input);
+                if let Ok(qvs) = rer_emb.embed_batch(&[qfmt.as_str()]) {
+                    if let Some(qv) = qvs.first() {
+                        for h in &mut cands {
+                            let passage = format!(
+                                "{} {}",
+                                h.title,
+                                h.snippet.chars().take(512).collect::<String>()
+                            );
+                            let pfmt = format!("task: search result | query: {}", passage);
+                            if let Ok(pvs) = rer_emb.embed_batch(&[pfmt.as_str()]) {
+                                if let Some(pv) = pvs.first() {
+                                    h.score = cosine_similarity(qv, pv);
+                                }
+                            }
+                        }
+                    }
+                }
+                cands.sort_by(|a, b| {
+                    b.score
+                        .partial_cmp(&a.score)
+                        .unwrap_or(std::cmp::Ordering::Equal)
+                });
+                hits = cands;
+                if explain {
+                    eprintln!(
+                        "(rerank: real semantic via {} on top {} candidates after fusion/expansion)",
+                        rer_emb.model_id(),
+                        cap
+                    );
+                }
+            }
+        } else {
+            hits = heuristic_rerank(hits, &input);
+            if explain {
+                eprintln!("(rerank: heuristic reranker applied on fused/auto-expanded results)");
+            }
+        }
+    } else if explain {
+        eprintln!("(rerank: skipped via --no-rerank flag)");
     }
 
     if let Some(ms) = min_score {
@@ -177,7 +246,11 @@ pub fn cmd_query(
                 println!("No matches for '{}'", display_for_empty);
             } else {
                 for h in &hits {
-                    println!("{} {}", h.file, h.docid);
+                    // Use formatter for TTY clickable editor links (from Iteration 3 slice).
+                    // Preserves visible "qmd://..." text; adds OSC8 href when appropriate.
+                    // line/col default to 1 (real chunk lines not yet stored in FtsHit/DB).
+                    let p = format_path_for_output(&h.file, Some(1), Some(1));
+                    println!("{} {}", p, h.docid);
                     println!("Title: {}", h.title);
                     println!("Score: {:.0}%", h.score * 100.0);
                     println!();
@@ -279,7 +352,9 @@ pub fn cmd_vsearch(
                 println!("No vector matches for '{}'", input);
             } else {
                 for h in &hits {
-                    println!("{} {}", h.file, h.docid);
+                    // Use formatter for TTY clickable editor links (Iteration 3 polish).
+                    let p = format_path_for_output(&h.file, Some(1), Some(1));
+                    println!("{} {}", p, h.docid);
                     println!("Title: {}", h.title);
                     println!("Score: {:.3} (cosine)", h.score);
                     println!();
@@ -341,4 +416,67 @@ fn fuse_rrf(lex: Vec<db_search::FtsHit>, vecs: Vec<db_search::FtsHit>) -> Vec<db
             .unwrap_or(std::cmp::Ordering::Equal)
     });
     out
+}
+
+/// Lightweight deterministic reranker for `qmd query` (the recommended path).
+///
+/// For Rust newbies:
+/// - Takes the already-retrieved hits (from FTS5 and/or vec_search + RRF).
+/// - Mutates scores in place with small additive boosts based on string overlap
+///   between the original user query and the hit's title/snippet (cheap, no allocs beyond to_lowercase).
+/// - Re-sorts descending by the boosted score.
+/// - This is a *real* reranking step (changes result order for many queries) that requires
+///   zero LLM, zero extra feature flags, and runs on top of the embedder work we already did.
+/// - In I2: used only as fallback when no embedder (real semantic rerank via default_reranker + cosine is preferred after fusion when can_vec).
+/// - Contrast: a true cross-encoder reranker would load a second (usually smaller) GGUF model,
+///   run forward passes on (query, passage) pairs, and return calibrated 0..1 relevance.
+///   (models.rerank now drives the embedder-based semantic rerank in this slice.)
+fn heuristic_rerank(mut hits: Vec<db_search::FtsHit>, query: &str) -> Vec<db_search::FtsHit> {
+    if query.trim().is_empty() || hits.is_empty() {
+        return hits;
+    }
+    let q = query.to_lowercase();
+    for h in &mut hits {
+        let mut boost: f32 = 0.0;
+        let t = h.title.to_lowercase();
+        let s = h.snippet.to_lowercase();
+        if !q.is_empty() && t.contains(&q) {
+            boost += 0.15;
+        }
+        for term in q.split_whitespace() {
+            if term.len() >= 3 {
+                if t.contains(term) {
+                    boost += 0.08;
+                } else if s.contains(term) {
+                    boost += 0.03;
+                }
+            }
+        }
+        // Cap the total boost so we do not completely override strong BM25/vec signals.
+        h.score += boost.min(0.5);
+    }
+    hits.sort_by(|a, b| {
+        b.score
+            .partial_cmp(&a.score)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+    hits
+}
+
+/// Cosine similarity (I2 reranker helper). Assumes same-dim non-empty vecs.
+/// Returns 0.0 on mismatch (safe fallback).
+fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 {
+    if a.len() != b.len() || a.is_empty() {
+        return 0.0;
+    }
+    let mut dot = 0.0f32;
+    let mut na = 0.0f32;
+    let mut nb = 0.0f32;
+    for (x, y) in a.iter().zip(b.iter()) {
+        dot += x * y;
+        na += x * x;
+        nb += y * y;
+    }
+    let denom = (na.sqrt() * nb.sqrt()).max(1e-8);
+    (dot / denom).clamp(-1.0, 1.0)
 }

@@ -43,6 +43,8 @@
 
 ## [Unreleased]
 
+- Iteration 3 (Agent Experience Polish) — smallest viable slice (wiki-first before any .rs): Full `QMD_EDITOR_URI` / `editor_uri` support for clickable OSC 8 terminal hyperlinks (when stdout is TTY) on paths in `qmd get` / `query` / `search` (incl. vsearch) results. Supports configurable template with `{path}`, `{line}`, `{col}` (defaults 1:1 since line data not yet in hits). Env `QMD_EDITOR_URI` takes precedence over `editor_uri` in YAML config. Added graceful qmd:// → real FS path resolver + format helper (degrades per-entry). `status` (text + JSON) now surfaces the effective editor config for visibility/health. Followed all patterns exactly (no new files, newbie comments on Option/Result/IsTerminal/etc, edit existing only, serde compat). All constraints: zero outside-workspace path refs in new artifacts, never ran mutating cmds (only `cargo run -- status` / `--help` for gates), fmt + clippy (default + --features llama-embed) clean, review to 0 issues, clean tree. Advances agent/llm-wiki TTY experience (clickable editor jumps from search hits).
+
 - Iteration 1 (v0.5.2 target): Surface Completeness complete.
   - `qmd init [--force]`: creates `.qmd/index.yml` + `.qmd/index.sqlite` (with schema bootstrap) when dir absent or forced. Local index preferred automatically by status/ls/collection/etc when CWD tree contains `.qmd/`. Global `~/.cache/qmd` fallback unchanged.
   - `qmd bench <fixture.json>`: minimal harness (serde load, exercises `fts_search` path, reports recall@K, avg latency, per-query hit/miss). No new deps.

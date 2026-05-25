@@ -3,24 +3,25 @@
 //! Significantly improved for 0.5.0: now surfaces embed model (via the Area 2
 //! embed infrastructure), config models, basic vector health, and warnings.
 //! JSON output extended for machine consumers. Follows exact prior patterns
-//! and reuses load_config + db helpers. No new path literals added in this edit.
+//! and reuses load_config + db helpers. I3 polish: editor_uri surfaced (effective
+//! value from env/yaml) in text + JSON. No new path literals in new code.
 
-use crate::db::{db_counts, expand_tilde, last_updated_hint, load_config};
+use crate::db::{active_db_path, db_counts, editor_uri, last_updated_hint, load_config};
 use crate::embed::default_embedder;
 use anyhow::Result;
 
-const INDEX_PATH: &str = "~/.cache/qmd/index.sqlite";
 #[allow(dead_code)] // kept for future parity / extension (see review nit #10)
 const CONFIG_DIR: &str = "~/.config/qmd";
 
 /// Handle the `qmd status` (and `status --json`) command.
 pub fn cmd_status(json: bool) -> Result<()> {
-    let index = expand_tilde(INDEX_PATH);
+    let index = active_db_path();
     // CONFIG_DIR constant kept for future parity / extension (no new path literals rule).
+    // active_* helpers (from db) provide local .qmd/ preference when present.
 
     let cfg = load_config().unwrap_or_default();
-    let (doc_count, vec_count) = db_counts(INDEX_PATH).unwrap_or((0, 0));
-    let updated = last_updated_hint(INDEX_PATH).unwrap_or_else(|| "unknown".to_string());
+    let (doc_count, vec_count) = db_counts(&index).unwrap_or((0, 0));
+    let updated = last_updated_hint(&index).unwrap_or_else(|| "unknown".to_string());
 
     let collection_count = cfg.collections.as_ref().map(|c| c.len()).unwrap_or(0);
 
@@ -38,6 +39,10 @@ pub fn cmd_status(json: bool) -> Result<()> {
     let embed_m = cfg.models.as_ref().and_then(|m| m.embed.clone());
     let gen_m = cfg.models.as_ref().and_then(|m| m.generate.clone());
     let rer_m = cfg.models.as_ref().and_then(|m| m.rerank.clone());
+
+    // Effective editor_uri (env QMD_EDITOR_URI wins over yaml editor_uri) for agent TTY polish (I3).
+    // Empty means no special clickable support in search/query/get output.
+    let editor = editor_uri().unwrap_or_default();
 
     // Basic vector health (presence + rough diversity)
     let vec_health = if vec_count == 0 && doc_count > 0 {
@@ -71,9 +76,10 @@ pub fn cmd_status(json: bool) -> Result<()> {
             "generate": gen_m.as_deref().unwrap_or(""),
             "rerank": rer_m.as_deref().unwrap_or("")
         });
+        let editor_val = serde_json::json!(editor);
         let warn_val = serde_json::json!(warnings);
         println!(
-            r#"{{"version":"{}","rust":true,"exe":"{}","index":"{}","documents":{},"vectors":{},"collections":{},"embed_model":"{}","embed_dim":{},"real_embed":{},"vector_health":"{}","models":{},"warnings":{}}}"#,
+            r#"{{"version":"{}","rust":true,"exe":"{}","index":"{}","documents":{},"vectors":{},"collections":{},"embed_model":"{}","embed_dim":{},"real_embed":{},"vector_health":"{}","models":{},"editor_uri":{},"warnings":{}}}"#,
             env!("CARGO_PKG_VERSION"),
             exe,
             index,
@@ -85,6 +91,7 @@ pub fn cmd_status(json: bool) -> Result<()> {
             real_embed,
             vec_health,
             models_val,
+            editor_val,
             warn_val
         );
     } else {
@@ -109,6 +116,16 @@ pub fn cmd_status(json: bool) -> Result<()> {
                 embed_m, gen_m, rer_m
             );
         }
+        // "Editor:" (human-friendly in TTY) vs "editor_uri" (machine key in JSON) is
+        // intentional, matching the pattern for "Embed model" vs embed_model etc.
+        println!(
+            "Editor: {}",
+            if editor.is_empty() {
+                "not set (plain paths; set QMD_EDITOR_URI or editor_uri in config for clickable TTY links)"
+            } else {
+                &editor
+            }
+        );
         println!("Vector health: {}", vec_health);
 
         if !warnings.is_empty() {

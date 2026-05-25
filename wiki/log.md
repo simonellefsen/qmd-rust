@@ -97,3 +97,13 @@ Append-only timeline of wiki maintenance. Headings use the format `## [YYYY-MM-D
 - Slices done with implement → (self) review via grep/read + fix loop until clean.
 - This keeps the LLM wiki itself as a living, maintained example.
 
+## [2026-05-25] iteration3 | start of slice: editor URI clickable TTY support (QMD_EDITOR_URI + config + status surface)
+
+- Wiki-first rule executed *before any* Rust source, Cargo.toml, or implementation file changes: this log entry + decision record update first.
+- Chose the single smallest viable, highest-leverage slice of Iteration 3 ("Agent Experience Polish"): implement full `QMD_EDITOR_URI` / `editor_uri` support for clickable OSC 8 terminal hyperlinks in TTY for paths in `get`/`query`/`search` results (with {path}:{line}:{col} substitution via template), wire env + YAML config lookup (graceful), document resolver for qmd:// hits to real FS paths (per-entry degrade), and surface the editor setting in `status` (text + extended JSON) as richer polish.
+- Rationale for slice choice (per task example and constraints): directly benefits llm-wiki / agent TTY usage (clickable editor jumps from search hits in loops); other I3 items (deeper MCP surface, complete skills packaging, more status health/fingerprints/vec counts per coll, making AST default) are larger or separate and left for subsequent slices. No scope creep.
+- Non-goals for this slice (wontfix here): adding real `line`/`col` data to FtsHit or DB queries (would require schema/upsert changes beyond smallest; use 1:1 defaults for now — links open at file top); touching MCP tools, skills, cleanup, or chunk defaults; new files or broad refactors.
+- Followed all standing rules: read AGENTS + wiki + impls first; proper patterns (no monoliths, newbie comments on Option/Result/?/derive, edit existing files only); zero references to any paths outside the workspace in new code/comments/changelog/artifacts; YAML roundtrip discipline untouched (no config mutations in slice); never executed forbidden mutating commands (only read-only like `cargo run -- status` + `--help` for verification, printed examples for human); fmt + clippy (default + llama-embed) after changes; update CHANGELOG under [Unreleased]; left tree clean for orchestrator commit/tag/push.
+- This advances the agent/MCP/llm-wiki use case (primary reason for Rust port) with minimal, reviewable diff.
+- Review loop (self + via review notes) until 0 open issues before summary.
+

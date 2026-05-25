@@ -4,6 +4,7 @@
 //! Handles output formatting (text, json, files) and min_score filtering.
 
 use crate::cli::args::OutputFormat;
+use crate::db::format_path_for_output;
 use crate::db::search as db_search;
 use anyhow::Result;
 
@@ -51,7 +52,10 @@ pub fn cmd_search(
                 println!("No matches for '{}'", joined);
             } else {
                 for h in &hits {
-                    println!("{} {}", h.file, h.docid);
+                    // Use formatter for TTY clickable editor links (QMD_EDITOR_URI slice).
+                    // Keeps exact same visible text + adds OSC8 only on real tty; line=1 default.
+                    let p = format_path_for_output(&h.file, Some(1), Some(1));
+                    println!("{} {}", p, h.docid);
                     println!("Title: {}", h.title);
                     println!("Score: {:.0}%", h.score * 100.0);
                     println!();
