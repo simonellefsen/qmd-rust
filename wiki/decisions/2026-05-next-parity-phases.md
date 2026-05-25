@@ -63,4 +63,6 @@ Goal: Make `qmd query` deliver on its "recommended + auto expansion + reranking"
 ## Next Action
 User will select the first slice from Iteration 1 (or adjust priorities). Work will proceed with wiki update → implementation in review loop → commit + tag + push.
 
+**2026-05-24 Update**: Iteration 1 started (wiki log entry first, per standing rule). Implementation in small slices with review_file loop now underway. This record will note completion after v0.5.2 tag.
+
 This decision record will be updated as iterations complete.

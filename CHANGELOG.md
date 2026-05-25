@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.5.2] - 2026-05-24
+
+- Iteration 1 (Surface Completeness): `qmd init` (project-local `.qmd/` support with schema bootstrap), `qmd bench <fixture>`, `qmd skill show/install`, `qmd skills list/get/path`. All implemented via proper per-command modules (`init.rs`, `bench.rs`, `skill.rs`) following established precedent. Foundational local index preference added to DB layer. Wiki-first discipline observed (log + roadmap decision updated before any source changes). All changes smallest viable, fmt + clippy clean (default + llama-embed), zero outside-workspace path references in new artifacts, review loop to 0 issues.
+
 ## [0.5.1] - 2026-05-24
 
 - Extract `context` and `cleanup` command implementations into their own modules (`src/cli/commands/context.rs`, `cleanup.rs`) for maintainability (addresses review finding from v0.5.0). Fixed 4 bugs reported in review (collection existence guard before YAML mutation, `context check` hidden for surface parity, safe JSON construction in `status --json`, stale comments). Small deduplication and polish. All per smallest viable + fmt + clippy clean.
@@ -30,6 +34,18 @@
 - `cargo fmt && cargo clippy -- -D warnings` (and with `--features llama-embed`) clean. No new heavy deps for default builds. CHANGELOG + full impl summary written.
 
 ## [Unreleased]
+
+- Iteration 1 (v0.5.2 target): Surface Completeness complete.
+  - `qmd init [--force]`: creates `.qmd/index.yml` + `.qmd/index.sqlite` (with schema bootstrap) when dir absent or forced. Local index preferred automatically by status/ls/collection/etc when CWD tree contains `.qmd/`. Global `~/.cache/qmd` fallback unchanged.
+  - `qmd bench <fixture.json>`: minimal harness (serde load, exercises `fts_search` path, reports recall@K, avg latency, per-query hit/miss). No new deps.
+  - `qmd skill show` + `qmd skill install [--global] [--force]`: discovers bundled via `CARGO_MANIFEST_DIR/skills/qmd`, copies tree + writes bootstrap stub to `./.agents/skills/qmd` (or `~/.agents`).
+  - `qmd skills list/get/path`: thin delegation to bundled skill location.
+  - All via dedicated modules (`init.rs`, `bench.rs`, `skill.rs`) exactly following `context.rs`/`multi_get.rs` precedent. Wiki-first (log + roadmap note before code). fmt + clippy (default + --features llama-embed) after every sub-slice + final. Zero outside-workspace path refs in new code/comments. CHANGELOG updated. Tree left clean for orchestrator release (commit + v0.5.2 tag + push).
+- All prior unreleased items retained for history.
+
+- `qmd multi-get` fully implemented (dedicated `src/cli/commands/multi_get.rs` following extraction pattern; supports comma lists + globs via globset, -l / --max-bytes, all output formats; wired in dispatch and removed from catch-all).
+- `qmd query` enhancements (smallest slice on existing embedder): basic automatic vector expansion (plain and lex-only queries now auto-hybrid when embeddings present) + real heuristic reranker (deterministic overlap boosts + re-sort when !--no-rerank). Makes the recommended command path noticeably stronger without new deps or LLM generate.
+- All changes: proper per-command module, Rust-newbie comments, fmt+clippy clean (default + llama-embed), no scope creep, constraints followed.
 
 ## [0.3.0] - 2026-05-24
 

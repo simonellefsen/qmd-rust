@@ -52,3 +52,17 @@ Append-only timeline of wiki maintenance. Headings use the format `## [YYYY-MM-D
 - This change ensures that future `cargo test --all` runs inside `cargo-dist` / release workflows will succeed on pristine GitHub runners.
 - Part of the ongoing "on each iteration keep wiki up to date + commit + tag + push" discipline for release hygiene.
 
+## [2026-05-24] iteration | Start Iteration 1 — Surface Completeness (target v0.5.2)
+
+- Official start of Iteration 1 per `wiki/decisions/2026-05-next-parity-phases.md`.
+- Wiki-first rule executed: this log entry (and optional roadmap note) added *before* touching any Rust source or creating new .rs command modules.
+- Exact scope locked to smallest viable:
+  1. `qmd init` (local .qmd/ + yml/sqlite; CLI prefers local when present, global fallback).
+  2. `qmd bench <fixture.json>` (minimal JSON loader + metrics using existing search/query paths; no new deps).
+  3. `qmd skill show` + `qmd skill install [--global]` (bundled via CARGO_MANIFEST_DIR + copy to ./.agents or ~/.agents; no claude symlink in smallest slice).
+  4. `qmd skills list/get/path` (thin delegation to discovered skill location).
+- Enforced: proper per-command modules (init.rs, bench.rs, skill.rs) exactly like context.rs / multi_get.rs; no logic dump in mod.rs.
+- All constraints: zero outside-workspace path strings in code/comments/changelog; never execute mutating qmd; fmt+clippy after every slice + end; update CHANGELOG under [Unreleased]; leave clean tree for orchestrator's final commit/tag v0.5.2/push.
+- Review loop (implement/fix via dedicated review notes file) until zero open issues.
+- This keeps the LLM wiki as living example.
+
