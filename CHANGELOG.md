@@ -39,6 +39,7 @@
 
 ## [Unreleased]
 
+- fix(release): regenerate `.github/workflows/release.yml` via `dist generate` (with rich `dist-workspace.toml` config restored) to eliminate the exact "release.yml has out of date contents and needs to be regenerated" error that blocked `dist host --steps=create --tag=v0.6.0` (and all future tags). Precisely removed the 7-line reproducibility/provenance comment block (cargo-dist v0.32.0 no longer emits it). Notes now live only in `wiki/runbooks/release.md`. Verified: `dist plan --tag=v0.6.0` succeeds cleanly; fmt + clippy gates passed. Prepares tree for v0.6.1 patch or next release.
 - Iteration 1 (v0.5.2 target): Surface Completeness complete.
   - `qmd init [--force]`: creates `.qmd/index.yml` + `.qmd/index.sqlite` (with schema bootstrap) when dir absent or forced. Local index preferred automatically by status/ls/collection/etc when CWD tree contains `.qmd/`. Global `~/.cache/qmd` fallback unchanged.
   - `qmd bench <fixture.json>`: minimal harness (serde load, exercises `fts_search` path, reports recall@K, avg latency, per-query hit/miss). No new deps.

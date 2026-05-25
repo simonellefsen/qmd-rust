@@ -3,12 +3,21 @@ type: wiki-log
 tags:
   - qmd-rust/wiki
   - maintained-by-llm
-updated: 2026-05-23
+updated: 2026-05-25
 ---
 
 # QMD-Rust Wiki Log
 
 Append-only timeline of wiki maintenance. Headings use the format `## [YYYY-MM-DD] kind | summary` for easy parsing by agents and `grep`.
+
+## [2026-05-25] release | fix cargo-dist "out of date contents" blocker for v0.6.0 (and future tags)
+
+- Ran `dist generate` (after `git checkout -- dist-workspace.toml` to keep our rich Homebrew/tap/musl/publish-jobs config) to produce a stock `.github/workflows/release.yml` from cargo-dist 0.32.0.
+- This exactly removed the 7-line "# Reproducibility / provenance notes..." block (plus 2 blanks) that the generator no longer emits and that caused the precise CI failure on `dist host --steps=create --tag=v0.6.0 --output-format=json`.
+- Restored the yml to pure generated form; reproducibility notes already lived in `wiki/runbooks/release.md` (as documented there to avoid this exact class of drift).
+- Verified: `dist plan --tag=v0.6.0` now succeeds without the error (only expected cross-compile warnings in the local env). `cargo fmt --all -- --check` and `cargo clippy -- -D warnings` (default + --features llama-embed) clean.
+- Updated CHANGELOG under [Unreleased]. Small targeted hygiene patch only (release.yml + this log + changelog); the large v0.6.0 src changes remain uncommitted for separate handling.
+- Per AGENTS.md: wiki-first update + checks before commit. Prepares for clean `git commit` of the fix + optional v0.6.1 patch tag.
 
 ## [2026-05-23] setup | LLM-wiki structure for qmd-rust
 

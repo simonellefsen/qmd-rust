@@ -4,7 +4,7 @@ tags:
   - qmd-rust/wiki
   - release
   - packaging
-updated: 2026-05-23
+updated: 2026-05-25
 ---
 
 # Release Process for QMD-Rust
@@ -27,6 +27,20 @@ See the release skill in `skills/release/` and `scripts/release.sh` (in the arch
 ## Packaging the Rust Binary
 
 The goal is to provide a small, static-ish binary with minimal runtime dependencies (only system SQLite + optional sqlite-vec extension).
+
+## Reproducibility & Provenance Notes
+
+We use `cargo-dist` (v0.32.0) for releases. To aid reproducibility:
+
+- `[profile.dist]` in `Cargo.toml` inherits from the release profile (consistent LTO/strip behavior).
+- Pinned `cargo-dist` installer, `actions/checkout`, and Rust toolchain versions in the generated workflow.
+- `cargo-dist` itself supports SLSA provenance, attestations, and hermetic builds.
+
+Detailed reproducibility notes are intentionally kept minimal inside the generated `.github/workflows/release.yml` (to avoid "out of date" failures from `dist host`). The full story lives here in the runbook.
+
+If you need to make intentional manual edits to the stock workflow, add `allow-dirty = ["*"]` (or a more targeted value) under `[dist]` in `dist-workspace.toml`.
+
+**2026-05-25 hygiene note**: Performed `dist generate` (with our rich config) + removed the now-stale 7-line reproducibility block from the committed workflow. `dist plan --tag=v0.6.0` succeeds; yml is kept purely stock-generated going forward. This resolves the exact CI error seen on the v0.6.0 tag push.
 
 ### Current State (as of this writing)
 
