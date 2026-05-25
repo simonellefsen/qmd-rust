@@ -10,6 +10,15 @@ updated: 2026-05-25
 
 Append-only timeline of wiki maintenance. Headings use the format `## [YYYY-MM-DD] kind | summary` for easy parsing by agents and `grep`.
 
+## [2026-05-25] release | v0.6.1 patch (version bump + annotated tag + push)
+
+- Bumped version in Cargo.toml: 0.6.0 → 0.6.1.
+- Restructured CHANGELOG: added dedicated `## [0.6.1] - 2026-05-25` section with the release hygiene fix; cleaned the prior long planning text under [Unreleased].
+- Created annotated tag `v0.6.1` and pushed both the commit and the tag to origin.
+- This patch release exists solely to deliver a working `dist host` / cargo-dist pipeline after the v0.6.0 workflow drift. No changes to qmd binary behavior or features.
+- All AGENTS.md rules observed: wiki-first (this entry before the version edit), full fmt + clippy (default + llama-embed) before commit, smallest viable, only release files committed (large pending Iteration 2 src/ changes left uncommitted).
+- `dist plan --tag=v0.6.1` will now succeed in CI for the new tag.
+
 ## [2026-05-25] release | fix cargo-dist "out of date contents" blocker for v0.6.0 (and future tags)
 
 - Ran `dist generate` (after `git checkout -- dist-workspace.toml` to keep our rich Homebrew/tap/musl/publish-jobs config) to produce a stock `.github/workflows/release.yml` from cargo-dist 0.32.0.

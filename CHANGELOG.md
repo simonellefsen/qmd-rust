@@ -4,6 +4,10 @@
 
 - Iteration 2 (Real LLM Power): Real reranker wired via `models.rerank` (GGUF + existing llama/embedder path + semantic cosine post-fusion, respects `--candidate-limit` / `--no-rerank` / `--explain`). Better automatic expansion (multi-vector pseudo-HyDE reuse of embedder + RRF). `--chunk-strategy auto` implemented (ChunkStrategy enum + `chunk_document` + std-only Rust/TS skeleton markers in `src/index/`, graceful fallback, fingerprint awareness). All via smallest viable edits to existing files only. Wiki-first (log + roadmap decision updated before any code). Proper architecture, fmt + clippy clean (default + llama-embed), zero outside-workspace path references, full review loop to 0 issues.
 
+## [0.6.1] - 2026-05-25
+
+- Patch release to unblock the cargo-dist release pipeline. Fixed the exact CI failure "`/home/runner/.../release.yml` has out of date contents and needs to be regenerated" (the 7-line reproducibility comment block that cargo-dist v0.32.0 no longer emits). Stock workflow regenerated via `dist generate`; notes consolidated in `wiki/runbooks/release.md`. `dist plan --tag=v0.6.0` (and v0.6.1) now succeeds. No changes to qmd binary, features, or behavior. Pure release hygiene.
+
 ## [0.5.2] - 2026-05-24
 
 - Iteration 1 (Surface Completeness): `qmd init` (project-local `.qmd/` support with schema bootstrap), `qmd bench <fixture>`, `qmd skill show/install`, `qmd skills list/get/path`. All implemented via proper per-command modules (`init.rs`, `bench.rs`, `skill.rs`) following established precedent. Foundational local index preference added to DB layer. Wiki-first discipline observed (log + roadmap decision updated before any source changes). All changes smallest viable, fmt + clippy clean (default + llama-embed), zero outside-workspace path references in new artifacts, review loop to 0 issues.
@@ -39,7 +43,6 @@
 
 ## [Unreleased]
 
-- fix(release): regenerate `.github/workflows/release.yml` via `dist generate` (with rich `dist-workspace.toml` config restored) to eliminate the exact "release.yml has out of date contents and needs to be regenerated" error that blocked `dist host --steps=create --tag=v0.6.0` (and all future tags). Precisely removed the 7-line reproducibility/provenance comment block (cargo-dist v0.32.0 no longer emits it). Notes now live only in `wiki/runbooks/release.md`. Verified: `dist plan --tag=v0.6.0` succeeds cleanly; fmt + clippy gates passed. Prepares tree for v0.6.1 patch or next release.
 - Iteration 1 (v0.5.2 target): Surface Completeness complete.
   - `qmd init [--force]`: creates `.qmd/index.yml` + `.qmd/index.sqlite` (with schema bootstrap) when dir absent or forced. Local index preferred automatically by status/ls/collection/etc when CWD tree contains `.qmd/`. Global `~/.cache/qmd` fallback unchanged.
   - `qmd bench <fixture.json>`: minimal harness (serde load, exercises `fts_search` path, reports recall@K, avg latency, per-query hit/miss). No new deps.
