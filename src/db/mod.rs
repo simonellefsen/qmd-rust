@@ -164,6 +164,23 @@ pub fn get_collection_stats(name: &str) -> (u32, String) {
     (0, "unknown".to_string())
 }
 
+/// Returns embedding vector chunk count for one collection (via hash join to content_vectors).
+/// Follows *exact* pattern of get_collection_stats (open_connection read-only, query_row, graceful 0 on error/empty).
+/// Used for per-collection embedding health in status (pairs with doc count for coverage signal).
+/// For Rust newbies: Option/Result from conn ops turn into 0 via if-let + unwrap_or; no panics on missing tables (sqlite returns 0 for COUNT on absent? but IF NOT in bootstrap).
+pub fn collection_vector_count(name: &str) -> u32 {
+    if let Ok(conn) = open_connection(true) {
+        if let Ok(cnt) = conn.query_row(
+            "SELECT COUNT(*) FROM content_vectors cv JOIN documents d ON d.hash = cv.hash WHERE d.collection = ? AND d.active = 1",
+            [name],
+            |r| r.get(0),
+        ) {
+            return cnt;
+        }
+    }
+    0
+}
+
 pub fn load_config_value() -> Result<serde_yaml::Value> {
     let path = active_config_path();
     if !path.exists() {

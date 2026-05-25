@@ -251,8 +251,10 @@ pub fn simple_chunk(content: &str, max_chars: usize) -> Vec<String> {
 
 /// Strategy-aware chunker (I2: --chunk-strategy support).
 /// - "auto": uses minimal std-only skeleton chunking at common fn/class boundaries
-///   for .rs (Rust) and .ts/.tsx/.js/.jsx (TypeScript/JavaScript). This is the
-///   "tree-sitter skeleton" for smallest viable (no new deps, no parser crates).
+///   for .rs/.rust (Rust), .ts/.tsx/.js/.jsx (TypeScript/JavaScript), .py/.pyw (Python),
+///   .go (Go), .md/.markdown (Markdown headers). Strengthens the "tree-sitter skeleton"
+///   toward production-grade AST-aware coverage for common wiki code/knowledge content
+///   (still no new deps or parser crates; pure marker extension + graceful fallback).
 ///   Falls back to simple_chunk for other extensions or if boundary scan yields nothing.
 /// - default/"regex": delegates to simple_chunk (paragraph based).
 ///   Always respects max_chars and never panics (graceful).
@@ -309,6 +311,32 @@ pub fn chunk_document(
                         return chs;
                     }
                 }
+            } else if lower.ends_with(".py") || lower.ends_with(".pyw") {
+                if let Some(chs) = chunk_by_markers(
+                    content,
+                    &["def ", "async def ", "class ", "if __name__ == "],
+                    max_chars,
+                ) {
+                    if !chs.is_empty() {
+                        return chs;
+                    }
+                }
+            } else if lower.ends_with(".go") {
+                if let Some(chs) =
+                    chunk_by_markers(content, &["func ", "type ", "const ", "var "], max_chars)
+                {
+                    if !chs.is_empty() {
+                        return chs;
+                    }
+                }
+            } else if lower.ends_with(".md") || lower.ends_with(".markdown") {
+                if let Some(chs) =
+                    chunk_by_markers(content, &["# ", "## ", "### ", "#### "], max_chars)
+                {
+                    if !chs.is_empty() {
+                        return chs;
+                    }
+                }
             }
         }
         // graceful fallback for non-matched or no boundaries found
@@ -316,7 +344,7 @@ pub fn chunk_document(
     simple_chunk(content, max_chars)
 }
 
-/// Minimal boundary-based chunker (skeleton for auto strategy, Rust + TS/JS support).
+/// Minimal boundary-based chunker (skeleton for auto strategy; now covers Rust/TS/JS/Python/Go/MD).
 /// Scans for marker strings, treats them as split points, then applies size cap within segments.
 /// Returns None only on degenerate input (caller falls back).
 fn chunk_by_markers(content: &str, markers: &[&str], max_chars: usize) -> Option<Vec<String>> {

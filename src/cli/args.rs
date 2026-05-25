@@ -13,7 +13,7 @@ use std::path::PathBuf;
     version,
     about = "QMD — Quick Markdown Search (Rust port)",
     long_about = "On-device hybrid search (BM25 + vector + LLM rerank) for your notes, docs, and wikis.\n\nRust implementation for security and performance. See AGENTS.md and llm-wiki.md.",
-    after_help = "Use `qmd <command> --help` for command-specific options.\n\nWhile the Rust port is under development, the Node reference binary is available as `/opt/homebrew/bin/qmd` (or `qmd` in PATH from npm)."
+    after_help = "Use `qmd <command> --help` for command-specific options.\n\nWhile the Rust port is under development, the Node reference binary is available as `qmd` (if installed) for comparison."
 )]
 pub struct Cli {
     /// The subcommand the user typed (query, status, etc.).
@@ -281,8 +281,8 @@ pub enum OutputFormat {
 
 /// Chunk strategy for embedding (and advertised on query in full parity).
 /// "regex" = current simple/paragraph chunker.
-/// "auto" = tree-sitter-like skeleton (in this slice: std-only boundary marker detection for
-/// at least Rust + TypeScript/JS; graceful fallback to regex for other files or on any failure).
+/// "auto" = strengthened std-only skeleton (boundary markers for Rust + TS/JS + Python + Go + MD;
+/// graceful fallback to regex for other files or on any failure). No tree-sitter deps.
 #[derive(clap::ValueEnum, Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ChunkStrategy {
     #[default]
