@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.6.10] - 2026-05-28
+
+- Fix distribution bug in the landed skill surface (highest-priority tracked post-landing gap after v0.6.9): `qmd skill show|install [--global] [--force]` and `qmd skills list|get|path` now fully work from any installed Rust binary (`cargo install`, cargo-dist releases, Homebrew, etc.). Replaced runtime `CARGO_MANIFEST_DIR` + filesystem discovery with compile-time `include_str!` embedding of the bundled assets (`SKILL.md` + `references/mcp-setup.md`) inside `src/cli/commands/skill.rs` only. Removed the dead runtime helper functions. All original semantics and behavior for development (`cargo run`) are preserved. Wiki-first (log entry + decision record update) before any code change. Full internal + external review loop to 0 open issues of any severity (with sound wontfix defenses for low-severity nits/scope). Full reinforced gates clean. Closes the item explicitly tracked for post-landing follow-up in the v0.6.9 release notes. (IMPL_ID afaa49a6)
+
 ## [0.6.8] - 2026-05-27
 
 - Release process hardening (hygiene for future tags/releases): added mandatory `scripts/verify-release.sh` (self-contained; runs exact reinforced gates + `cargo dist plan` using version from local `Cargo.toml`; fails fast with actionable guidance on mismatch). Added "Pre-tag / Pre-push verification checklist (mandatory)" to AGENTS.md. Extended wiki/runbooks/release.md with sibling subsection documenting the root cause (temp branches for gap slices left `Cargo.toml` at older version while tags claimed higher; dist derives artifacts from manifest at tagged commit). Wiki-first log entry. Full gates + script self-execution clean. Large pending Iteration 2/3 tree left exactly untouched. 0 external refs in new text. First real release using the new mandatory gate (script run first, bad tags cleaned, v0.6.8).
