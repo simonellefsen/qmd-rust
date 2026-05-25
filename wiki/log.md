@@ -10,6 +10,16 @@ updated: 2026-05-26
 
 Append-only timeline of wiki maintenance. Headings use the format `## [YYYY-MM-DD] kind | summary` for easy parsing by agents and `grep`.
 
+## [2026-05-26] release | v0.6.6 tag plan failure (run 26390122069) + fix in progress
+
+- New cargo-dist "plan" failure on the v0.6.6 tag push: the Release workflow job `Run dist host --steps=create --tag=v0.6.6 --output-format=json` exited 255.
+- This is the exact recurring "release.yml has out of date contents and needs to be regenerated" class of error we have hit on nearly every new minor tag since adopting cargo-dist (previously fixed for v0.6.0/v0.6.1 with `dist generate` + stale comment removal).
+- Root cause: The .github/workflows/release.yml (last generated for an earlier dist state) is now considered out-of-sync by the cargo-dist version running on the v0.6.6 tag. The committed Cargo.toml is still at 0.6.5 (the 0.6.6 bump lives in the large uncommitted Iteration 2/3 base material).
+- Wiki-first: This log entry written before any regeneration or edit to release.yml.
+- Following the exact process documented in wiki/runbooks/release.md (2026-05-25 hygiene note): protect dist-workspace.toml, run `cargo dist generate`, review diff (expect removal of any new stale reproducibility blocks), full gates, smallest patch, new patch tag (v0.6.7), push.
+- Large Iteration 2/3 pending changes remain exactly uncommitted throughout.
+- Will produce v0.6.7 annotated tag that makes the next `dist plan` succeed.
+
 ## [2026-05-26] ci | v0.6.5 tag green (run 26389674496)
 
 - Confirmed successful full CI build for the v0.6.5 tag: https://github.com/simonellefsen/qmd-rust/actions/runs/26389674496 — all jobs (Check+Format+Clippy, Test Linux, macOS build, Release build, etc.) green.
