@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.6.0] - 2026-05-24
+
+- Iteration 2 (Real LLM Power): Real reranker wired via `models.rerank` (GGUF + existing llama/embedder path + semantic cosine post-fusion, respects `--candidate-limit` / `--no-rerank` / `--explain`). Better automatic expansion (multi-vector pseudo-HyDE reuse of embedder + RRF). `--chunk-strategy auto` implemented (ChunkStrategy enum + `chunk_document` + std-only Rust/TS skeleton markers in `src/index/`, graceful fallback, fingerprint awareness). All via smallest viable edits to existing files only. Wiki-first (log + roadmap decision updated before any code). Proper architecture, fmt + clippy clean (default + llama-embed), zero outside-workspace path references, full review loop to 0 issues.
+
 ## [0.5.2] - 2026-05-24
 
 - Iteration 1 (Surface Completeness): `qmd init` (project-local `.qmd/` support with schema bootstrap), `qmd bench <fixture>`, `qmd skill show/install`, `qmd skills list/get/path`. All implemented via proper per-command modules (`init.rs`, `bench.rs`, `skill.rs`) following established precedent. Foundational local index preference added to DB layer. Wiki-first discipline observed (log + roadmap decision updated before any source changes). All changes smallest viable, fmt + clippy clean (default + llama-embed), zero outside-workspace path references in new artifacts, review loop to 0 issues.
@@ -46,6 +50,12 @@
 - `qmd multi-get` fully implemented (dedicated `src/cli/commands/multi_get.rs` following extraction pattern; supports comma lists + globs via globset, -l / --max-bytes, all output formats; wired in dispatch and removed from catch-all).
 - `qmd query` enhancements (smallest slice on existing embedder): basic automatic vector expansion (plain and lex-only queries now auto-hybrid when embeddings present) + real heuristic reranker (deterministic overlap boosts + re-sort when !--no-rerank). Makes the recommended command path noticeably stronger without new deps or LLM generate.
 - All changes: proper per-command module, Rust-newbie comments, fmt+clippy clean (default + llama-embed), no scope creep, constraints followed.
+
+- Iteration 2 (v0.6.0 target) — Real LLM Power (wiki-first + 3 smallest slices + 0-issue review loop):
+  - Real reranker: models.rerank (or fallback) loaded via existing LlamaEmbedder path (new for_rerank ctor + default_reranker); integrated post-fusion in query as semantic cosine rerank over top --candidate-limit candidates (replaces heuristic when embeddings; actually reorders via real model signals). Respects --no-rerank/--candidate-limit/--explain. candidate_limit arg wired.
+  - Better auto-expansion: multi-vector (primary + one pseudo-HyDE rewrite variant) on plain/auto queries, all via embedder only (no generate); RRF-fused for richer signals on the recommended path.
+  - --chunk-strategy wired (auto|regex default) on embed + update; chunk_document + std-only skeleton boundary chunker (Rust fn/pub/impl + TS/JS class/export markers) in index/ with full graceful fallback; EMBED_*_TOKEN updated + fp now strategy-aware; all call sites/dispatch updated. No new deps.
+  - Architecture: edited only existing files under src/embed/ (llama+mod) + src/index/ + cli bits; followed all patterns; zero outside-workspace refs in new artifacts. fmt+clippy (default + llama-embed) after subslices + end. CHANGELOG + clean tree for orchestrator (final wiki, commit, v0.6.0 tag, push).
 
 ## [0.3.0] - 2026-05-24
 

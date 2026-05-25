@@ -63,6 +63,8 @@ Goal: Make `qmd query` deliver on its "recommended + auto expansion + reranking"
 ## Next Action
 User will select the first slice from Iteration 1 (or adjust priorities). Work will proceed with wiki update → implementation in review loop → commit + tag + push.
 
-**2026-05-24 Update**: Iteration 1 started (wiki log entry first, per standing rule). Implementation in small slices with review_file loop now underway. This record will note completion after v0.5.2 tag.
+**2026-05-24 Update**: Iteration 1 started (wiki log entry first, per standing rule). Implementation in small slices with review loop now underway. This record will note completion after v0.5.2 tag.
+
+**2026-05-24 Update (Iteration 2 start)**: Iteration 1 complete (v0.5.2 delivered). Official start of Iteration 2 — Real LLM Power. Wiki-first (log.md + this update) executed before any Rust changes. Scope: real reranker (models.rerank via embedder path), better auto-expansion (multi-vec on embedder), `--chunk-strategy auto` (skeleton in index/). Smallest viable slices, proper placement (edit existing embed/ and index/ files only, no new modules), fmt+clippy after slices, CHANGELOG, clean tree for orchestrator release (v0.6.0 tag etc). Review loop to 0 issues. Constraints followed exactly.
 
 This decision record will be updated as iterations complete.

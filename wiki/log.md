@@ -66,3 +66,16 @@ Append-only timeline of wiki maintenance. Headings use the format `## [YYYY-MM-D
 - Review loop (implement/fix via dedicated review notes file) until zero open issues.
 - This keeps the LLM wiki as living example.
 
+## [2026-05-24] iteration | Start Iteration 2 — Real LLM Power (target v0.6.0)
+
+- Official start of Iteration 2 per `wiki/decisions/2026-05-next-parity-phases.md`. (I1 complete with v0.5.2.)
+- Wiki-first rule executed: this log entry + roadmap decision record update added *before* any Rust source edits or new modules (per standing rule on each iteration).
+- Exact scope locked to smallest viable high-impact slices only:
+  1. Real reranker: load/use real model from `models.rerank` (or fallback) via existing llama-cpp-2/embedder path (no new gen scaffolding); integrate after fusion in query; respect --no-rerank / --candidate-limit / --explain; replaces heuristic with model-driven semantic cosine rerank on candidates for meaningful reordering on real data.
+  2. Better automatic expansion: enhance current (intent + plain-text-as-vec) with multi-vector pseudo-HyDE style variants reusing embedder only (no LLM generate); more diverse vec signals fused via RRF.
+  3. Wire `--chunk-strategy auto`: add arg to embed/update; extend chunking in index/ with std-only language skeleton (regex boundary markers for Rust + TS/JS etc at fn/class); graceful fallback to simple/regex for other files/failures; update fingerprint + embed pipeline to be strategy-aware.
+- Enforced: proper architecture (reranker logic + embedder extension in src/embed/* (edited existing); chunk strategy extends src/index/mod.rs; no new .rs files created; no monoliths in query.rs); followed existing patterns exactly (e.g. EMBED_* consts, simple_chunk callers, LlamaEmbedder ctor style, RRF fuse).
+- All constraints (non-negotiable): zero references to any paths/files outside the workspace in *new* code/comments/changelog; never run any mutating `qmd` commands; run `cargo fmt --all -- --check && cargo clippy --all-targets -- -D warnings` (and with --features llama-embed) after every meaningful sub-slice + at very end; update CHANGELOG.md under ## [Unreleased]; at success (0-issue loop) leave tree clean for orchestrator's final wiki polish + changelog + commit + next-minor tag (v0.6.0) + push.
+- Slices done with implement → (self) review via grep/read + fix loop until clean.
+- This keeps the LLM wiki itself as a living, maintained example.
+
