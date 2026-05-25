@@ -45,6 +45,9 @@ pub enum Commands {
         explain: bool,
         #[arg(long)]
         no_rerank: bool,
+        /// Limit number of candidates sent to reranker (real rerank only applies to top N; default 40)
+        #[arg(long, default_value_t = 40)]
+        candidate_limit: usize,
         /// Show full document content (instead of snippet)
         #[arg(long)]
         full: bool,
@@ -152,6 +155,9 @@ pub enum Commands {
         /// (QMD_EMBED_MODEL or models.embed in index.yml). Uses fingerprinting to skip work.
         #[arg(long)]
         embed: bool,
+        /// Chunking strategy for embeddings: regex (default, paragraphs) or auto (skeleton boundaries for Rust/TS/JS etc; falls back gracefully)
+        #[arg(long, value_enum, default_value_t = ChunkStrategy::Regex)]
+        chunk_strategy: ChunkStrategy,
     },
 
     /// Generate or refresh vector embeddings
@@ -160,6 +166,9 @@ pub enum Commands {
         force: bool,
         #[arg(short = 'c', long)]
         collection: Option<String>,
+        /// Chunking strategy for embeddings: regex (default, paragraphs) or auto (skeleton boundaries for Rust/TS/JS etc; falls back gracefully)
+        #[arg(long, value_enum, default_value_t = ChunkStrategy::Regex)]
+        chunk_strategy: ChunkStrategy,
     },
 
     /// Start the MCP server
@@ -268,4 +277,15 @@ pub enum OutputFormat {
     Md,
     Xml,
     Files,
+}
+
+/// Chunk strategy for embedding (and advertised on query in full parity).
+/// "regex" = current simple/paragraph chunker.
+/// "auto" = tree-sitter-like skeleton (in this slice: std-only boundary marker detection for
+/// at least Rust + TypeScript/JS; graceful fallback to regex for other files or on any failure).
+#[derive(clap::ValueEnum, Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ChunkStrategy {
+    #[default]
+    Regex,
+    Auto,
 }

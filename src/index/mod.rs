@@ -1,4 +1,4 @@
-//! Basic file discovery and content indexing logic (Area 2 foundation).
+//! Basic file discovery and content indexing logic (Area 2 foundation + I2 chunk-strategy).
 //!
 //! Goal for first slice (0.4.0):
 //! - Walk collections using their path + glob pattern.
@@ -6,6 +6,7 @@
 //! - Support `qmd update` (with optional --pull).
 //!
 //! Vector/embedding generation will be layered on top in later slices of this area.
+//! I2: chunk_document supports --chunk-strategy auto (std skeleton for rs/ts) with fallback.
 
 use crate::db::open_connection;
 use anyhow::Result;
@@ -248,6 +249,126 @@ pub fn simple_chunk(content: &str, max_chars: usize) -> Vec<String> {
     chunks
 }
 
+/// Strategy-aware chunker (I2: --chunk-strategy support).
+/// - "auto": uses minimal std-only skeleton chunking at common fn/class boundaries
+///   for .rs (Rust) and .ts/.tsx/.js/.jsx (TypeScript/JavaScript). This is the
+///   "tree-sitter skeleton" for smallest viable (no new deps, no parser crates).
+///   Falls back to simple_chunk for other extensions or if boundary scan yields nothing.
+/// - default/"regex": delegates to simple_chunk (paragraph based).
+///   Always respects max_chars and never panics (graceful).
+pub fn chunk_document(
+    content: &str,
+    strategy: &str,
+    max_chars: usize,
+    filepath: Option<&str>,
+) -> Vec<String> {
+    if strategy == "auto" {
+        if let Some(p) = filepath {
+            let lower = p.to_lowercase();
+            if lower.ends_with(".rs") || lower.ends_with(".rust") {
+                if let Some(chs) = chunk_by_markers(
+                    content,
+                    &[
+                        "fn ",
+                        "pub fn ",
+                        "pub(crate) fn ",
+                        "pub async fn ",
+                        "impl ",
+                        "struct ",
+                        "enum ",
+                        "trait ",
+                        "mod ",
+                    ],
+                    max_chars,
+                ) {
+                    if !chs.is_empty() {
+                        return chs;
+                    }
+                }
+            } else if lower.ends_with(".ts")
+                || lower.ends_with(".tsx")
+                || lower.ends_with(".js")
+                || lower.ends_with(".jsx")
+            {
+                if let Some(chs) = chunk_by_markers(
+                    content,
+                    &[
+                        "function ",
+                        "const ",
+                        "let ",
+                        "class ",
+                        "export function ",
+                        "export const ",
+                        "export class ",
+                        "interface ",
+                        "type ",
+                    ],
+                    max_chars,
+                ) {
+                    if !chs.is_empty() {
+                        return chs;
+                    }
+                }
+            }
+        }
+        // graceful fallback for non-matched or no boundaries found
+    }
+    simple_chunk(content, max_chars)
+}
+
+/// Minimal boundary-based chunker (skeleton for auto strategy, Rust + TS/JS support).
+/// Scans for marker strings, treats them as split points, then applies size cap within segments.
+/// Returns None only on degenerate input (caller falls back).
+fn chunk_by_markers(content: &str, markers: &[&str], max_chars: usize) -> Option<Vec<String>> {
+    if content.trim().is_empty() {
+        return Some(vec![]);
+    }
+    let mut breaks: Vec<usize> = vec![0];
+    for m in markers {
+        let mut start = 0usize;
+        while let Some(pos) = content[start..].find(m) {
+            let abs = start + pos;
+            if abs > 0 && abs < content.len() {
+                breaks.push(abs);
+            }
+            start = abs + 1;
+            if start >= content.len() {
+                break;
+            }
+        }
+    }
+    breaks.push(content.len());
+    breaks.sort_unstable();
+    breaks.dedup();
+
+    let mut chunks = Vec::new();
+    for w in breaks.windows(2) {
+        let s = w[0];
+        let e = w[1];
+        if e <= s {
+            continue;
+        }
+        let seg = content[s..e].trim();
+        if seg.is_empty() {
+            continue;
+        }
+        if seg.len() <= max_chars {
+            chunks.push(seg.to_string());
+        } else {
+            let mut st = 0;
+            while st < seg.len() {
+                let en = (st + max_chars).min(seg.len());
+                chunks.push(seg[st..en].to_string());
+                st = en;
+            }
+        }
+    }
+    if chunks.is_empty() {
+        chunks.push(content.to_string());
+    }
+    Some(chunks)
+}
+
 /// Compute a compact embedding fingerprint from model id + chunking parameters + format version.
 /// Used to detect when re-embedding is required (changed model, chunker, or embedding logic).
 /// Short 8-char blake3 prefix for storage in content_vectors.embed_fingerprint.
@@ -263,8 +384,10 @@ pub fn embedding_fingerprint(model: &str, chunker: &str, fmt_ver: &str) -> Strin
 }
 
 /// Current chunker token used by the basic embed path (matches `simple_chunk(800)`).
-/// Centralized here per review observation so the smart-chunker slice has one place to update.
+/// Kept for backward comments; prefer EMBED_CHUNKER_TOKEN_REGEX / _AUTO in new call sites.
 pub const EMBED_CHUNKER_TOKEN: &str = "simple-800";
+pub const EMBED_CHUNKER_TOKEN_REGEX: &str = "simple-800";
+pub const EMBED_CHUNKER_TOKEN_AUTO: &str = "auto-rs-ts-skel";
 /// Current format version token for embedding fingerprints in this sub-slice.
 pub const EMBED_FMT_VER: &str = "1";
 
@@ -320,7 +443,8 @@ mod tests {
                     last_indexed TEXT
                 );
                 "#,
-            ).unwrap();
+            )
+            .unwrap();
         }
 
         // good files

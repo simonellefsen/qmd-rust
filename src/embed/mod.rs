@@ -48,3 +48,20 @@ pub fn default_embedder() -> Box<dyn Embedder> {
         Box::new(NoopEmbedder)
     }
 }
+
+/// Returns an embedder suitable for reranking (I2 real reranker).
+/// Prefers QMD_RERANK_MODEL / models.rerank from config (via llama path).
+/// Falls back to the regular embed model if no rerank spec. This lets
+/// `models.rerank` drive the post-fusion rerank step in query when present,
+/// while reusing the exact existing LlamaEmbedder load/embed code (smallest).
+/// No-op when feature absent.
+pub fn default_reranker() -> Box<dyn Embedder> {
+    #[cfg(feature = "llama-embed")]
+    {
+        Box::new(llama::LlamaEmbedder::for_rerank())
+    }
+    #[cfg(not(feature = "llama-embed"))]
+    {
+        Box::new(NoopEmbedder)
+    }
+}

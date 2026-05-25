@@ -10,6 +10,19 @@ updated: 2026-05-26
 
 Append-only timeline of wiki maintenance. Headings use the format `## [YYYY-MM-DD] kind | summary` for easy parsing by agents and `grep`.
 
+## [2026-05-26] release | v0.6.4 patch (minimal CI rescue: compile + fmt)
+
+- Fixed the two compile errors blocking `cargo test --all` / check / clippy on the committed tree (and on GitHub CI after v0.6.2/v0.6.3): 
+  - `ChunkStrategy` enum (with Regex/Auto) + its `chunk_strategy` fields on Update/Embed commands + re-export from lib.rs.
+  - `default_reranker()` in embed/ (behind the llama-embed feature) + its usage in query.
+  - Related `candidate_limit` field on Query command (already referenced in committed query.rs/main.rs).
+- Also normalized the recurring multiline `).unwrap();` fmt style in the hermetic test schema bootstrap inside `src/index/mod.rs` (the exact failure that hit v0.6.1).
+- These definitions existed in long-standing local uncommitted work but were not captured in the prior release commits.
+- Wiki-first (this log entry) before staging any source.
+- Full gates run clean immediately before commit: `cargo fmt --all -- --check` + `cargo clippy -- -D warnings` (default + `--features llama-embed`).
+- Only the minimal files needed for green CI were staged. Remaining large Iteration 2/3 uncommitted changes left exactly as-is for future controlled landing.
+- Annotated tag v0.6.4 + push. Followed the reinforced release hygiene from v0.6.3.
+
 ## [2026-05-26] release | harden pre-release lint gate after v0.6.1 fmt regression
 
 - `cargo fmt --all -- --check` (and full clippy default + `--features llama-embed`) is now an explicit, mandatory, documented step in `wiki/runbooks/release.md` immediately before any release commit/tag/push.
