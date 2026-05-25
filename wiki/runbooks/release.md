@@ -4,7 +4,7 @@ tags:
   - qmd-rust/wiki
   - release
   - packaging
-updated: 2026-05-26
+updated: 2026-05-27
 ---
 
 # Release Process for QMD-Rust
@@ -151,6 +151,20 @@ The script is intentionally minimal (~100 lines) and meant to be reviewed before
   ```
 
   Paste the output into the commit message or release notes. This is now non-negotiable release process hygiene (matches AGENTS.md "run fmt + clippy before committing").
+- **Pre-tag verification script (mandatory)** (added to address the v0.6.7–v0.6.11 cargo-dist CI failures): Immediately before any release commit, annotated tag, or push of a tag, the person (or orchestrator) performing the release **must** run from the repository root and require success:
+
+  ```sh
+  ./scripts/verify-release.sh
+  ```
+
+  The script executes the reinforced gates (fmt check + both clippy -D warnings + `cargo test --all`) plus `cargo dist plan`, using the version parsed from the *local* `Cargo.toml` (cargo pkgid primary + grep fallback). It exits non-zero with clear guidance on any failure; only the success banner ("All gates passed for vX.Y.Z from local Cargo.toml manifest. Safe to create...") permits proceeding to tag.
+
+  Paste the *full* script output into the commit message or GitHub release notes.
+
+  **Root cause this script + checklist prevents**: The v0.6.7–v0.6.11 tags/releases reached a bad/inconsistent state because temp branches (e.g. `v0.6.x` for gap slices) were used to create the tags without first bumping (and committing) the version in `Cargo.toml` on those branches, or merging the bump back to the mainline commit being tagged. `cargo dist plan` (and the Release workflow) determines what to release exclusively from the manifest `version` at the tagged commit; the tag name / `--tag` hint is only advisory. Result: repeated "This workspace doesn't have anything for dist to Release!" (with hint --tag=...) on CI. Running the script locally before tagging would have detected the mismatch (dist plan fails when manifest version has no artifacts) and blocked the push.
+
+  The existing reinforced lint gate (above) is now a subset of what the script enforces. The "Important (first release)" tap seeding note below remains in effect for bootstrap.
+
 - **Manual follow-up (the 4 steps requested for first release)**: See the numbered checklist immediately below. These are the concrete actions to take *outside* this repo (GitHub UI + local git tag).
 
 ## First Real Release Checklist (the 1-4 steps + installer)
@@ -185,9 +199,32 @@ These complete the release scaffolding:
    - Delete the test tag + release + git push origin :v0.2.0-test if anything looks wrong.
 
 4. **(Optional but nice) Polish + docs + real release**
-   - Add the `HOMEBREW_TAP_TOKEN` secret (classic PAT with `repo` scope, or fine-grained with Contents:write on the tap repo) to the **qmd-rust** repo Settings → Secrets → Actions.
+   - Add the `HOMEBREW_TAP_TOKEN` secret to the **qmd-rust** repo (Settings → Secrets and variables → Actions).
    - Improve flake further or add more wiki pages.
    - When ready: repeat step 3 with a real `v0.2.0` (or next semver), then `brew tap simonellefsen/qmd && brew install qmd` from any machine to verify.
+
+### HOMEBREW_TAP_TOKEN – Recommended Permissions (Fine-grained PAT)
+
+The `publish-homebrew-formula` job (part of `publish-jobs = ["homebrew"]`) checks out the tap repository (`simonellefsen/homebrew-qmd`) and pushes the generated formula. It uses the secret `HOMEBREW_TAP_TOKEN`.
+
+**Recommended configuration (Fine-grained Personal Access Token):**
+
+- Create the token under the account that owns the tap (`simonellefsen`).
+- **Repository access**: Select **only** `simonellefsen/homebrew-qmd`.
+- **Required permissions**:
+  - **Contents**: **Read and write** (mandatory)
+  - **Pull requests**: **Read and write** (strongly recommended – the publish job often opens a PR)
+  - **Metadata**: Read (usually granted automatically)
+
+**Do not** give the token access to the main `qmd-rust` repository.
+
+After creating the token, add it as a secret named exactly `HOMEBREW_TAP_TOKEN` in the `qmd-rust` repository.
+
+**Important (first release)**: Seed the tap repository (`simonellefsen/homebrew-qmd`) with at least one commit on `main` before triggering the first publish, otherwise the checkout step in the `publish-homebrew-formula` job will fail.
+
+**Note on default branch**: The checkout step looks for the default branch of the tap repo. If your tap still uses `master` as the default branch (common with older Homebrew taps), you may see checkout failures looking for `refs/heads/main`. Either rename the default branch of `simonellefsen/homebrew-qmd` to `main`, or the publish job will need adjustment.
+
+**Classic PAT (legacy)**: `public_repo` scope is the minimum that works for a public tap. Fine-grained tokens are strongly preferred.
 
 ### Verifying the curl | sh installer (post-first-release)
 

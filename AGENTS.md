@@ -119,6 +119,34 @@ Read [llm-wiki.md](llm-wiki.md) fully at the start of any session that involves 
 - The shell wrapper `bin/qmd` will eventually become a thin Rust launcher or be replaced by a pure Rust binary.
 - Update Nix flake, Homebrew formula, etc., once the Rust build is solid.
 - Full test matrix (including against the original TS outputs for regression) before cutting releases.
+- **Mandatory pre-tag verification**: Before any `vX.Y.Z` annotated tag or push, run `./scripts/verify-release.sh` from the repo root (see the Pre-tag / Pre-push verification checklist (mandatory) immediately below and `wiki/runbooks/release.md` for the full reinforced gates, dist plan requirement, and root-cause diagnosis of prior v0.6.7–v0.6.11 incidents).
+
+## Pre-tag / Pre-push verification checklist (mandatory)
+
+Before creating or pushing *any* `vX.Y.Z` annotated tag (or release-related branch), the developer or orchestrator **must** run the verification script from the repository root and confirm success:
+
+```sh
+./scripts/verify-release.sh
+```
+
+The script executes the reinforced gates (fmt + both clippy variants + test --all, as formalized in this checklist and documented in the release runbooks):
+
+```
+cargo fmt --all -- --check
+cargo clippy -- -D warnings
+cargo clippy --features llama-embed -- -D warnings
+cargo test --all
+```
+
+plus `cargo dist plan` (must succeed and announce artifacts for the version parsed from the *local* `Cargo.toml` at the current commit).
+
+- If any gate or the dist plan fails, the script exits non-zero with actionable guidance (typically: bump the version in `Cargo.toml`, commit, and re-run).
+- Only on the success banner ("All gates passed for vX.Y.Z from local Cargo.toml manifest. Safe to create annotated tag vX.Y.Z and push.") is it safe to proceed with `git tag -a vX.Y.Z -m "..."` followed by `git push origin main --tags`.
+- Paste the complete script output into the release commit message or GitHub Release notes.
+
+This enforces version alignment: `cargo dist` (plan + CI release jobs) uses the `version` field from the manifest at the tagged commit to decide what to build and publish. Tags created without a matching manifest bump produce the "doesn't have anything for dist to Release" error.
+
+See `wiki/runbooks/release.md` (the "Pre-tag verification script (mandatory)" subsection) for the documented root cause of the v0.6.7–v0.6.11 incidents and full hygiene notes.
 
 ## Quick Reference — Original Node Commands (for parity testing)
 
