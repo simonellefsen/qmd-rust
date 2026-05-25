@@ -25,6 +25,17 @@ Append-only timeline of wiki maintenance. Headings use the format `## [YYYY-MM-D
 - Confirmed the value of consistent YAML frontmatter (`type`, `tags`, `updated`, `sources: []`), relative links, and parseable log entries.
 - Noted practical questions around scaling qmd collections and frontmatter-aware search — directly relevant to qmd-rust development.
 
+## [2026-05-24] planning | Next parity roadmap after v0.5.1
+
+- Created new decision record `decisions/2026-05-next-parity-phases.md` with a clear phased plan for remaining work toward full TS qmd parity.
+- Updated `decisions/README.md` and `wiki/index.md` to reference the new roadmap.
+- Plan breaks remaining work into small reviewable iterations:
+  1. Surface completeness (`init`, `bench`, `skill show/install`, `skills` commands)
+  2. Real LLM power (actual reranker model, better auto-expansion, `--chunk-strategy auto`)
+  3. Agent experience polish (editor URI, deeper MCP, full skills packaging)
+- Each future iteration will: update wiki (this log + relevant pages), implement in smallest viable slices with review loop, run fmt+clippy, update CHANGELOG, commit + tag + push.
+- This keeps the LLM wiki itself as a living example of using qmd for agent-driven project knowledge.
+
 ## [2026-05-23] port | Rust qmd CLI skeleton + status parity
 
 - Initialized Cargo bin `qmd`, basic clap subcommand surface matching the Node original.

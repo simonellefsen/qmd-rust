@@ -40,6 +40,7 @@ qmd (the tool) is the recommended search backend for exactly this kind of persis
 ## Decisions
 
 - [decisions/README](decisions/README.md) — Architecture decision records (crate selection, FFI boundaries, local vs global index, etc.).
+- [decisions/2026-05-next-parity-phases](decisions/2026-05-next-parity-phases.md) — Current roadmap for remaining parity work (as of May 2026).
 
 ## Experiments
 
