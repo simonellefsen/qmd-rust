@@ -43,3 +43,12 @@ Append-only timeline of wiki maintenance. Headings use the format `## [YYYY-MM-D
 - Added rusqlite + serde_yaml; passes fmt + clippy -D warnings.
 - AGENTS.md created (replaced legacy CLAUDE.md) with explicit llm-wiki integration section.
 - Goal: make the Rust binary the preferred safe target for exactly the agentic wiki-maintenance flows documented in the daytrader example.
+
+## [2026-05-24] ci | Harden integration test and enforce formatting for reliable releases
+
+- Fixed `cargo fmt --all -- --check` failure that was occurring in GitHub Actions release workflows (the multiline `.unwrap()` on `execute_batch` was not matching rustfmt expectations in the released tree).
+- Hardened `index::tests::test_update_path_end_to_end_with_ignore_patterns` so it bootstraps the minimal required schema (`content`, `documents`, `documents_fts`, `store_collections`) using `CREATE TABLE IF NOT EXISTS`. This prevents the "no such table: content" panic on fresh CI runners that have never run the Node version of qmd.
+- Confirmed locally: `cargo fmt --all -- --check` passes cleanly and `cargo test --lib` (all 15 tests, including the previously flaky integration test) passes even against a completely empty SQLite file.
+- This change ensures that future `cargo test --all` runs inside `cargo-dist` / release workflows will succeed on pristine GitHub runners.
+- Part of the ongoing "on each iteration keep wiki up to date + commit + tag + push" discipline for release hygiene.
+
