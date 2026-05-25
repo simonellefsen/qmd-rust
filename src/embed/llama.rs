@@ -64,6 +64,14 @@ impl LlamaEmbedder {
         }
     }
 
+    /// Minimal stub so `default_reranker()` (and the feature-gated rerank path
+    /// in query) compiles when the `llama-embed` feature is enabled.
+    /// The real for_rerank (separate rerank model, cosine post-fusion, etc.)
+    /// is part of the larger pending Iteration 2 work and will overlay this.
+    pub fn for_rerank() -> Self {
+        Self::new()
+    }
+
     fn resolve_model_path(&self) -> Result<PathBuf> {
         let expanded = expand_tilde(&self.model_path);
         let pb = PathBuf::from(expanded);

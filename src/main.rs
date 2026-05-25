@@ -116,6 +116,7 @@ fn main() -> Result<()> {
             collection,
             explain,
             no_rerank,
+            candidate_limit,
             full,
             line_numbers,
         }) => {
@@ -128,6 +129,7 @@ fn main() -> Result<()> {
                 collection,
                 explain,
                 no_rerank,
+                candidate_limit,
                 full,
                 line_numbers,
             )?;
@@ -159,12 +161,20 @@ fn main() -> Result<()> {
             qmd::cli::commands::mcp::cmd_mcp(http, port, daemon)?;
         }
 
-        Some(Commands::Update { pull, embed }) => {
-            qmd::cli::commands::update::cmd_update(pull, embed)?;
+        Some(Commands::Update {
+            pull,
+            embed,
+            chunk_strategy,
+        }) => {
+            qmd::cli::commands::update::cmd_update(pull, embed, chunk_strategy)?;
         }
 
-        Some(Commands::Embed { force, collection }) => {
-            qmd::cli::commands::embed::cmd_embed(force, collection)?;
+        Some(Commands::Embed {
+            force,
+            collection,
+            chunk_strategy,
+        }) => {
+            qmd::cli::commands::embed::cmd_embed(force, collection, chunk_strategy)?;
         }
 
         Some(Commands::Context { action }) => {

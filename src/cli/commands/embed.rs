@@ -13,7 +13,11 @@ use crate::embed::Embedder;
 use crate::index::{discover_files, simple_chunk, store_vectors};
 use anyhow::Result;
 
-pub fn cmd_embed(force: bool, collection: Option<String>) -> Result<()> {
+pub fn cmd_embed(
+    force: bool,
+    collection: Option<String>,
+    _chunk_strategy: crate::cli::args::ChunkStrategy,
+) -> Result<()> {
     let embedder: Box<dyn Embedder> = embed::default_embedder();
     let model = embedder.model_id().to_string();
     let dim = embedder.dimension();

@@ -10,6 +10,19 @@ updated: 2026-05-26
 
 Append-only timeline of wiki maintenance. Headings use the format `## [YYYY-MM-DD] kind | summary` for easy parsing by agents and `grep`.
 
+## [2026-05-26] release | v0.6.5 patch (completion of v0.6.4 minimal CI rescue — wiring for candidate_limit + chunk_strategy)
+
+- Diagnosed https://github.com/simonellefsen/qmd-rust/actions/runs/26389286619 (4 jobs: Check+Format+Clippy, Test Linux, Build macOS, Build Release — all exit 101 after the v0.6.4 tag push 1778707).
+  - Exact errors (from runner logs): `error[E0027]: pattern does not mention field `candidate_limit`` (and same for `chunk_strategy`) in src/main.rs match arms on Commands::Query / Update / Embed.
+  - Follow-on: `error[E0061]: this function takes 11 arguments but 10 arguments were supplied` (cmd_query call site arity).
+  - Note: `cargo fmt --all -- --check` step had passed cleanly on the runner (v0.6.4 normalization of the execute_batch .unwrap() was good); failure was pure compile after fmt.
+- Root cause (confirmed via git show HEAD on the v0.6.4 commit): The "minimal rescue" in v0.6.4 added the fields to the clap enum variants in args.rs (candidate_limit on Query, chunk_strategy on Update/Embed + ChunkStrategy ValueEnum), the enum definition, default_reranker() in embed/, the query handler sig update, and the index fmt fix. But it left the dispatch in main.rs (patterns + calls) and the cmd_update / cmd_embed handler sigs inconsistent with those fields. The local dirty tree had the full consistent Iteration 2/3 wiring (so it compiled), but clean checkout of the tag (what CI sees) did not. CI matrix (clippy --all-targets, cargo test --all, cargo check --all-targets, builds) exposed the gap exactly as the prior v0.6.3 failures had.
+- Wiki-first: this log entry + CHANGELOG note written (and gates planned) before any source edit, stash, or commit.
+- Smallest viable completion patch for v0.6.5 (only  main.rs 3 arms + update.rs + embed.rs sigs + Cargo.toml version bump 0.6.1→0.6.5 + this log + changelog). No heavy reranker/expansion/chunk-auto logic or new files from the large pending included.
+- Full reinforced pre-release gates (matching CI + the documented mandatory suite) run clean on the minimal tree immediately before the commit: `cargo fmt --all -- --check`, `cargo clippy --all-targets -- -D warnings`, `cargo clippy -- -D warnings`, `cargo clippy --features llama-embed -- -D warnings`, plus `cargo test --all` and `cargo check --all-targets`.
+- Annotated tag v0.6.5 + push (origin main + tags). Large Iteration 2/3 pending changes restored exactly uncommitted afterward (per "smallest viable + do not dump the blob" contract). Followed AGENTS.md + the v0.6.3 reinforced hygiene exactly.
+- Post-push: user can `git pull && git checkout v0.6.5` (or just pull main) and re-trigger or wait for the next CI run on the tag to confirm green.
+
 ## [2026-05-26] release | v0.6.4 patch (minimal CI rescue: compile + fmt)
 
 - Fixed the two compile errors blocking `cargo test --all` / check / clippy on the committed tree (and on GitHub CI after v0.6.2/v0.6.3): 

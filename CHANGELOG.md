@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.5] - 2026-05-26
+
+- Patch to complete the v0.6.4 CI rescue. The v0.6.4 minimal patch (1778707) had added the new clap fields (`candidate_limit`, `chunk_strategy`, `ChunkStrategy` enum) + query handler update + fmt normalization, but left the `main.rs` dispatch patterns/calls and `cmd_update`/`cmd_embed` sigs inconsistent. This caused E0027 (missing fields in patterns) + E0061 (arity) on clean CI checkout for run 26389286619 (all 4 jobs: check/clippy, test, macOS, release builds). `cargo fmt` step itself passed.
+- Smallest viable fix: updated only the 3 match arms in src/main.rs + minimal sig extensions (accept + ignore the chunk_strategy param for now) in the two handler entrypoints + version bump in Cargo.toml. Full dispatch now consistent; new flags are accepted by clap (behavior for chunk_strategy on update/embed remains the prior for this patch; real strategy selection lands with the controlled larger slice later).
+- Wiki-first (log entry + this note before any source change). Full gates (fmt + clippy --all-targets -D warnings + default + llama-embed feature + test/check) clean immediately before commit. Annotated tag v0.6.5. Large Iteration 2/3 pending left exactly uncommitted.
+- No behavior change for users; this is pure "make the committed tree compile on CI again" hygiene (same class as the v0.6.1 yml and v0.6.3 gate patches).
+
 ## [0.6.0] - 2026-05-24
 
 - Iteration 2 (Real LLM Power): Real reranker wired via `models.rerank` (GGUF + existing llama/embedder path + semantic cosine post-fusion, respects `--candidate-limit` / `--no-rerank` / `--explain`). Better automatic expansion (multi-vector pseudo-HyDE reuse of embedder + RRF). `--chunk-strategy auto` implemented (ChunkStrategy enum + `chunk_document` + std-only Rust/TS skeleton markers in `src/index/`, graceful fallback, fingerprint awareness). All via smallest viable edits to existing files only. Wiki-first (log + roadmap decision updated before any code). Proper architecture, fmt + clippy clean (default + llama-embed), zero outside-workspace path references, full review loop to 0 issues.

@@ -9,8 +9,14 @@ use crate::db::{expand_tilde, load_config};
 use crate::index::{discover_files, upsert_document};
 use anyhow::Result;
 
-/// Handle `qmd update [--pull] [--embed]`
-pub fn cmd_update(pull: bool, embed: bool) -> Result<()> {
+/// Handle `qmd update [--pull] [--embed] [--chunk-strategy <strategy>]`
+/// chunk_strategy is accepted for CLI parity and future strategy-aware chunking
+/// (real selection + auto AST paths land in controlled later slice).
+pub fn cmd_update(
+    pull: bool,
+    embed: bool,
+    chunk_strategy: crate::cli::args::ChunkStrategy,
+) -> Result<()> {
     if pull {
         eprintln!("Note: --pull is not yet implemented in Rust (use the reference binary or run git pull manually).");
     }
@@ -72,7 +78,7 @@ pub fn cmd_update(pull: bool, embed: bool) -> Result<()> {
         // with the smallest possible diff. Double discovery is acceptable for this slice.
         // cmd_embed returns Ok(()) today (all per-chunk errors are logged + continued inside);
         // future slices may return real errors for the caller.
-        let _ = crate::cli::commands::embed::cmd_embed(false, None);
+        let _ = crate::cli::commands::embed::cmd_embed(false, None, chunk_strategy);
     } else {
         println!("  (vectors not generated; re-run with --embed or use `qmd embed` when `llama-embed` feature is enabled)");
     }
