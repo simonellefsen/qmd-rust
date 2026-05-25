@@ -1,52 +1,24 @@
 //! `qmd skill show/install` + `qmd skills list/get/path` (Iteration 1, smallest viable).
 //!
-//! Bundled skill discovery via CARGO_MANIFEST_DIR (works for cargo run / cargo install --path).
-//! install copies the bundled tree + writes the bootstrap stub (no claude symlink in this slice).
-//! skills commands are thin delegation to the (bundled or "installed") location.
-//! Follows per-command module precedent exactly; no monolith in mod.rs.
+//! Bundled skill assets are now embedded at compile time (include_str!) for full
+//! distribution parity: `qmd skill` and `qmd skills` work from any installed binary
+//! (cargo install, releases, etc.) with no runtime source tree or CARGO_MANIFEST_DIR dep.
+//! install writes the bootstrap stub + references tree (original full SKILL.md replaced
+//! per prior behavior). skills cmds delegate to embedded content. Follows per-command
+//! module precedent exactly; no monolith in mod.rs.
 
-use anyhow::{bail, Result};
+use anyhow::Result;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use crate::cli::args::{SkillAction, SkillsAction};
 
-/// Locate the bundled qmd skill dir from build-time manifest (no runtime outside refs).
-fn bundled_skill_dir() -> Option<PathBuf> {
-    // CARGO_MANIFEST_DIR is a compile-time env var; the string in source is relative only.
-    let root = env!("CARGO_MANIFEST_DIR");
-    let p = Path::new(root).join("skills").join("qmd");
-    if p.join("SKILL.md").exists() {
-        Some(p)
-    } else {
-        None
-    }
-}
-
-/// Read the primary SKILL.md content from a skill dir.
-fn read_skill_md(dir: &Path) -> Result<String> {
-    let p = dir.join("SKILL.md");
-    Ok(fs::read_to_string(p)?)
-}
-
-/// Recursive copy of directory contents (files + subdirs). Mirrors original copyDirectoryContents.
-fn copy_dir_contents(src: &Path, dst: &Path) -> Result<()> {
-    fs::create_dir_all(dst)?;
-    for entry in fs::read_dir(src)? {
-        let entry = entry?;
-        let s = entry.path();
-        let d = dst.join(entry.file_name());
-        if s.is_dir() {
-            copy_dir_contents(&s, &d)?;
-        } else if s.is_file() {
-            if let Some(parent) = d.parent() {
-                let _ = fs::create_dir_all(parent);
-            }
-            fs::copy(&s, &d)?;
-        }
-    }
-    Ok(())
-}
+/// Skill assets embedded at compile time from the source tree at build.
+/// This is the fix for the pre-existing distribution bug: content ships inside
+/// the binary for `cargo install` / dist users (dev `cargo run` gets updates on rebuild).
+const BUNDLED_SKILL_MD: &str = include_str!("../../../skills/qmd/SKILL.md");
+const BUNDLED_REFERENCES_MCP_SETUP: &str =
+    include_str!("../../../skills/qmd/references/mcp-setup.md");
 
 /// The minimal bootstrap stub written on install (tells agent to run `qmd skill show`).
 fn installed_stub_content() -> &'static str {
@@ -82,28 +54,20 @@ Then follow those instructions. In short: search first, fetch full sources with
 pub fn cmd_skill(action: SkillAction) -> Result<()> {
     match action {
         SkillAction::Show { .. } => {
-            let dir = match bundled_skill_dir() {
-                Some(d) => d,
-                None => bail!("QMD skill not found (run from source tree or reinstall)"),
-            };
+            // Use embedded content (compile-time include_str!): fixes the distribution
+            // bug so `qmd skill show` works from any installed binary (no runtime
+            // CARGO_MANIFEST_DIR or source tree required).
             println!("QMD Skill");
             println!();
-            let content = read_skill_md(&dir)?;
-            print!(
-                "{}",
-                if content.ends_with('\n') {
-                    content
-                } else {
-                    format!("{}\n", content)
-                }
-            );
+            let content = if BUNDLED_SKILL_MD.ends_with('\n') {
+                BUNDLED_SKILL_MD.to_string()
+            } else {
+                format!("{}\n", BUNDLED_SKILL_MD)
+            };
+            print!("{}", content);
         }
         SkillAction::Install { global, force, .. } => {
-            let src = match bundled_skill_dir() {
-                Some(d) => d,
-                None => bail!("QMD skill not found for install"),
-            };
-
+            // Target calculation unchanged (supports --global and local .agents).
             let home = std::env::var("HOME").unwrap_or_default();
             let target = if global {
                 PathBuf::from(&home)
@@ -128,10 +92,16 @@ pub fn cmd_skill(action: SkillAction) -> Result<()> {
                 let _ = fs::remove_dir_all(&target);
             }
 
-            copy_dir_contents(&src, &target)?;
-
-            // Write the bootstrap stub (replaces the full one per original behavior).
+            // Write embedded assets directly (no runtime copy from source dir).
+            // This is the core of the dist bug fix: the references/ tree + stub are
+            // always available from the binary itself.
+            fs::create_dir_all(&target)?;
+            fs::create_dir_all(target.join("references"))?;
             fs::write(target.join("SKILL.md"), installed_stub_content())?;
+            fs::write(
+                target.join("references").join("mcp-setup.md"),
+                BUNDLED_REFERENCES_MCP_SETUP,
+            )?;
 
             println!("✓ Installed QMD skill to {}", target.display());
             println!(
@@ -144,42 +114,27 @@ pub fn cmd_skill(action: SkillAction) -> Result<()> {
 
 /// Handle `qmd skills <list|get|path ...>` (thin delegation).
 pub fn cmd_skills(action: Option<SkillsAction>) -> Result<()> {
-    let bundled = bundled_skill_dir();
-    let effective = bundled.clone(); // for v0.5.2: only bundled (install location tracked by FS, not registry)
-
+    // "bundled" is now always the embedded content (post dist bug fix); no FS lookup.
     match action.unwrap_or(SkillsAction::List) {
         SkillsAction::List => {
-            if let Some(dir) = &effective {
-                println!("  qmd  QMD agent skill (bundled)");
-                println!("       {}", dir.display());
-            } else {
-                println!("No skills found");
-            }
+            println!("  qmd  QMD agent skill (bundled)");
+            println!("       (embedded in this binary; `qmd skill show` for content)");
         }
         SkillsAction::Get { name } => {
             if name != "qmd" {
                 eprintln!("Unknown skill: {}", name);
                 std::process::exit(1);
             }
-            if let Some(dir) = &effective {
-                let content = read_skill_md(dir)?;
-                print!("{}", content);
-            } else {
-                eprintln!("Skill not found");
-                std::process::exit(1);
-            }
+            // Embedded full content (was previously read from dir).
+            print!("{}", BUNDLED_SKILL_MD);
         }
         SkillsAction::Path { name } => {
             if name != "qmd" {
                 eprintln!("Unknown skill: {}", name);
                 std::process::exit(1);
             }
-            if let Some(dir) = &effective {
-                println!("{}", dir.display());
-            } else {
-                eprintln!("Skill not found");
-                std::process::exit(1);
-            }
+            // No real FS path for embedded; report clearly (avoids prior "not found" error).
+            println!("(embedded in the qmd binary; view with `qmd skill show`)");
         }
     }
     Ok(())
